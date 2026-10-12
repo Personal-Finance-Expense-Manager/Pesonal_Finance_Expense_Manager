@@ -1,0 +1,99 @@
+# ---------------------------------------------------------------------------
+# Personal Finance & Expense Manager
+# Keep the repository to source, configuration and the project documents only.
+# ---------------------------------------------------------------------------
+
+# Dependencies
+node_modules/
+jspm_packages/
+.pnp
+.pnp.js
+bower_components/
+
+# Secrets and local configuration
+# SRS SEC-12: secrets are supplied through environment variables and are never committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+config/local.json
+secrets.json
+serviceAccount*.json
+
+# Build output
+build/
+dist/
+out/
+.next/
+.cache/
+.parcel-cache/
+client/build/
+server/dist/
+*.tsbuildinfo
+
+# Logs and runtime data
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Testing and coverage
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+playwright-report/
+
+# Database and uploads (local development only)
+data/
+*.sqlite
+*.sqlite3
+mongo-data/
+uploads/
+server/uploads/
+
+# Operating system cruft
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Editors and IDEs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.sample.json
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# Office and PDF lock / autosave files
+# These appear next to the SRS, SADS and Test Plan while they are open in Word.
+~$*
+*.tmp
+*.wbk
+*.asd
+.~lock.*#
+
+# Archives accidentally dropped into the repository
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
