@@ -121,3 +121,4 @@ The project is planned to use the following technologies:
                     │      MongoDB        │
                     │      Database       │
                     └─────────────────────┘
+```
