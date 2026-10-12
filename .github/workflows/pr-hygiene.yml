@@ -1,0 +1,37 @@
+name: Pull request hygiene
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  checks:
+    name: Traceability checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull request must reference a backlog issue
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s %s' "$TITLE" "$BODY" | grep -Eq '#[0-9]+'; then
+            echo "Found a linked backlog issue."
+          else
+            echo "::error title=No linked issue::Reference the backlog issue this pull request delivers, for example 'Closes #42'."
+            exit 1
+          fi
+
+      - name: Pull request must carry a title prefix
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s' "$TITLE" | grep -Eq '^(US-[0-9]+|chore|docs|fix|test)'; then
+            echo "Title prefix is valid."
+          else
+            echo "::error title=Bad title::Start the title with the story id (for example 'US-04 ...') or with chore/docs/fix/test."
+            exit 1
+          fi
