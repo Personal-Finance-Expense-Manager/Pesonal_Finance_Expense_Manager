@@ -4,16 +4,23 @@
  *   cd server
  *   npm run seed:dev
  *
+ * Also adds a few demo expense categories (Food, Transport, ...).
+ *
  * Prints the user's id. Paste it into the "Demo user id" box on the
- * Accounts page (http://localhost:5173/#/accounts) while sign-in (US-04)
- * is not merged yet. Refuses to run with NODE_ENV=production.
+ * Accounts or Budgets page while sign-in (US-04) is not merged yet.
+ * Refuses to run with NODE_ENV=production.
  */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import User from '../src/models/User.js';
+import Category from '../src/models/Category.js';
 
 const DEMO_EMAIL = 'demo@pfem.local';
+
+// Demo expense categories so budgets (US-14) can be tried before the
+// categories story (US-12) is merged. Created for the demo user only.
+const DEMO_CATEGORIES = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment'];
 
 if (process.env.NODE_ENV === 'production') {
   console.error('Refusing to create a demo user in production.');
@@ -44,12 +51,22 @@ try {
     console.log('Demo user already exists.');
   }
 
+  let added = 0;
+  for (const name of DEMO_CATEGORIES) {
+    const exists = await Category.findOne({ user_id: user._id, type: 'expense', name });
+    if (!exists) {
+      await Category.create({ user_id: user._id, type: 'expense', name });
+      added += 1;
+    }
+  }
+  if (added) console.log(`Added ${added} demo expense categories.`);
+
   console.log('');
   console.log(`  email:    ${DEMO_EMAIL}`);
   console.log('  password: Demo@12345');
   console.log(`  user id:  ${user._id.toString()}`);
   console.log('');
-  console.log('Copy the user id into the Accounts page.');
+  console.log('Copy the user id into the Accounts or Budgets page.');
 } catch (error) {
   console.error(`Could not create the demo user: ${error.message}`);
   process.exitCode = 1;
