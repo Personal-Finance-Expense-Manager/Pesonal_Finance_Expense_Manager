@@ -41,6 +41,9 @@ export function decideAlerts(percentUsed, warningSent, overSent) {
   return result;
 }
 
+const rupees = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' });
+const fmt = (value) => rupees.format(Number(value));
+
 function label(budget, categoryName) {
   return budget.category_id ? `${categoryName} budget` : 'Overall budget';
 }
@@ -74,8 +77,8 @@ export async function evaluateBudget(budget, utilisation, categoryName) {
         user_id: budget.user_id,
         type: 'budget_over',
         title: `${name} exceeded`,
-        body: `You have spent ${utilisation.spent} of your ${utilisation.budgeted} ${name.toLowerCase()} ` +
-          `(${utilisation.percent_used}%).`,
+        body: `You have spent ${fmt(utilisation.spent)} of your ${fmt(utilisation.budgeted)} ` +
+          `${name.toLowerCase()} (${utilisation.percent_used}%).`,
       }));
     }
   }
@@ -90,8 +93,9 @@ export async function evaluateBudget(budget, utilisation, categoryName) {
         user_id: budget.user_id,
         type: 'budget_warning',
         title: `${name} is at ${utilisation.percent_used}%`,
-        body: `You have spent ${utilisation.spent} of your ${utilisation.budgeted} ${name.toLowerCase()}. ` +
-          `${utilisation.remaining} is left for the next ${utilisation.days_left} day(s).`,
+        body: `You have spent ${fmt(utilisation.spent)} of your ${fmt(utilisation.budgeted)} ` +
+          `${name.toLowerCase()}. ${fmt(utilisation.remaining)} is left for the next ` +
+          `${utilisation.days_left} day${utilisation.days_left === 1 ? '' : 's'}.`,
       }));
     }
   }
