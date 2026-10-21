@@ -31,6 +31,8 @@ const accountSchema = new mongoose.Schema({
       message: 'Credit limit must have at most two decimal places.',
     },
   },
+  // Credit cards only: day of the month the statement is due (REQ-21).
+  statement_due_day: { type: Number, min: 1, max: 31, default: null },
   is_archived: { type: Boolean, default: false },
 }, { timestamps: true });
 

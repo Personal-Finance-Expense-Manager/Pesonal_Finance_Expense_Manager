@@ -6,6 +6,12 @@
  *
  * Also adds a few demo expense categories (Food, Transport, ...).
  *
+ *   npm run seed:dev -- --fresh
+ *
+ * --fresh first deletes everything the demo user owns (accounts,
+ * transactions, transfers, budgets, alerts, categories) so you can start a
+ * test or a demo recording from a clean slate. The user id stays the same.
+ *
  * Prints the user's id. Paste it into the "Demo user id" box on the
  * Accounts or Budgets page while sign-in (US-04) is not merged yet.
  * Refuses to run with NODE_ENV=production.
@@ -15,6 +21,11 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import User from '../src/models/User.js';
 import Category from '../src/models/Category.js';
+import Account from '../src/models/Account.js';
+import Transaction from '../src/models/Transaction.js';
+import Transfer from '../src/models/Transfer.js';
+import Budget from '../src/models/Budget.js';
+import Notification from '../src/models/Notification.js';
 
 const DEMO_EMAIL = 'demo@pfem.local';
 
@@ -49,6 +60,20 @@ try {
     console.log('Created demo user.');
   } else {
     console.log('Demo user already exists.');
+  }
+
+  if (process.argv.includes('--fresh')) {
+    const mine = { user_id: user._id };
+    const results = await Promise.all([
+      Transaction.deleteMany(mine),
+      Transfer.deleteMany(mine),
+      Budget.deleteMany(mine),
+      Notification.deleteMany(mine),
+      Account.deleteMany(mine),
+      Category.deleteMany(mine),
+    ]);
+    const removed = results.reduce((n, r) => n + r.deletedCount, 0);
+    console.log(`Fresh start: removed ${removed} demo records (accounts, transactions, budgets, ...).`);
   }
 
   let added = 0;
