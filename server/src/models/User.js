@@ -30,12 +30,12 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
-    // Email verification
     email_verified: {
       type: Boolean,
       default: false,
     },
 
+    // Email verification
     email_verification_code_hash: {
       type: String,
       select: false,
@@ -60,6 +60,29 @@ const userSchema = new mongoose.Schema(
 
     email_verification_resend_window_started_at: {
       type: Date,
+    },
+
+    // US-04: Failed sign-in tracking and account lockout
+    failed_sign_in_attempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    sign_in_locked_until: {
+      type: Date,
+      default: null,
+    },
+
+    // US-04: Password reset tokens
+    password_reset_token_hash: {
+      type: String,
+      select: false,
+    },
+
+    password_reset_expires_at: {
+      type: Date,
+      select: false,
     },
 
     // User consent
