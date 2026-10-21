@@ -8,8 +8,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test test/account-validation.test.js",
-    "seed:dev": "node scripts/seed-dev-user.js"
+    "test": "node --test test/account-validation.test.js test/budget.test.js",
+    "seed:dev": "node scripts/seed-dev-user.js",
+    "dev:spend": "node scripts/dev-spend.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

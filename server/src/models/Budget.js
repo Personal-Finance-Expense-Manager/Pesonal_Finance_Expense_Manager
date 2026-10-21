@@ -44,6 +44,16 @@ const budgetSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // REQ-46 / BR-6: each alert is raised only once per budget per period.
+  // A budget covers exactly one period, so "sent" is recorded on the budget.
+  warning_alert_sent_at: {
+    type: Date,
+    default: null,
+  },
+  over_budget_alert_sent_at: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
 });
