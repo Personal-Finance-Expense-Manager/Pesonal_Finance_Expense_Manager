@@ -24,6 +24,7 @@ test('REQ-13 creates a valid bank account', () => {
     opening_balance: '2500.50',
     currency: 'INR',
     credit_limit: '0.00',
+    statement_due_day: null,
   });
 });
 
@@ -128,4 +129,32 @@ test('REQ-16 changing a card to another type clears its limit', () => {
 
 test('REQ-16 an empty update is rejected', () => {
   assert.ok(validateAccountUpdate({}, 'bank').errors.body);
+});
+
+// ---------------------------------------------------------------------------
+// REQ-21: statement due day for credit cards (US-07)
+// ---------------------------------------------------------------------------
+
+test('REQ-21 credit card keeps a statement due day, other types do not', () => {
+  const card = validateNewAccount({
+    name: 'Visa', type: 'credit_card', credit_limit: '100000', statement_due_day: '5',
+  });
+  assert.equal(card.data.statement_due_day, 5);
+
+  const bank = validateNewAccount({ name: 'HDFC', type: 'bank', statement_due_day: 5 });
+  assert.equal(bank.data.statement_due_day, null);
+});
+
+test('REQ-21 statement due day must be 1 to 31', () => {
+  for (const bad of ['0', '32', 'abc', '5.5']) {
+    const { errors } = validateNewAccount({
+      name: 'Visa', type: 'credit_card', statement_due_day: bad,
+    });
+    assert.ok(errors.statement_due_day, `expected "${bad}" to fail`);
+  }
+});
+
+test('REQ-21 statement due day can be edited on a card only', () => {
+  assert.equal(validateAccountUpdate({ statement_due_day: 20 }, 'credit_card').data.statement_due_day, 20);
+  assert.ok(validateAccountUpdate({ statement_due_day: 20 }, 'bank').errors.statement_due_day);
 });

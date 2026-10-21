@@ -15,7 +15,7 @@ export const ACCOUNT_TYPES = ['cash', 'bank', 'credit_card', 'wallet'];
 export const NAME_MAX_LENGTH = 60;
 
 // Fields the user may change on an existing account (REQ-16).
-const EDITABLE_FIELDS = ['name', 'type', 'currency', 'credit_limit'];
+const EDITABLE_FIELDS = ['name', 'type', 'currency', 'credit_limit', 'statement_due_day'];
 
 // The current balance is derived, never typed in (REQ-16).
 const READ_ONLY_FIELDS = ['balance', 'current_balance', 'opening_balance'];
@@ -85,6 +85,19 @@ function checkType(raw) {
   return { value: raw };
 }
 
+/**
+ * Day of the month a credit card statement is due (REQ-21): 1 to 31, or
+ * empty for "not set". In short months the due date falls on the last day.
+ */
+export function parseDueDay(raw) {
+  if (raw === undefined || raw === null || raw === '') return { value: null };
+  const text = String(raw).trim();
+  if (!/^\d{1,2}$/.test(text) || Number(text) < 1 || Number(text) > 31) {
+    return { error: 'Statement due day must be a day of the month from 1 to 31.' };
+  }
+  return { value: Number(text) };
+}
+
 function checkCurrency(raw) {
   if (typeof raw !== 'string' || !/^[A-Za-z]{3}$/.test(raw.trim())) {
     return { error: 'Currency must be a three-letter code such as INR or USD.' };
@@ -130,8 +143,13 @@ export function validateNewAccount(body, defaultCurrency = 'INR') {
     const limit = parseAmount(input.credit_limit ?? '0', 'Credit limit');
     if (limit.error) errors.credit_limit = limit.error;
     else data.credit_limit = limit.value;
+
+    const dueDay = parseDueDay(input.statement_due_day);
+    if (dueDay.error) errors.statement_due_day = dueDay.error;
+    else data.statement_due_day = dueDay.value;
   } else {
     data.credit_limit = '0.00';
+    data.statement_due_day = null;
   }
 
   return Object.keys(errors).length ? { errors } : { data };
@@ -140,7 +158,7 @@ export function validateNewAccount(body, defaultCurrency = 'INR') {
 /**
  * Validate the body of PATCH /api/accounts/:id (REQ-16).
  *
- * Only name, type, currency and credit limit may change. Trying to set a
+ * Only name, type, currency, credit limit and statement due day may change. Trying to set a
  * balance directly is rejected with an explanation rather than ignored.
  */
 export function validateAccountUpdate(body, existingType) {
@@ -192,12 +210,23 @@ export function validateAccountUpdate(body, existingType) {
       else data.credit_limit = limit.value;
     }
   } else if (data.type && data.type !== 'credit_card') {
-    // Moving away from credit card clears the limit.
+    // Moving away from credit card clears the limit and due day.
     data.credit_limit = '0.00';
+    data.statement_due_day = null;
+  }
+
+  if ('statement_due_day' in input) {
+    if (finalType !== 'credit_card') {
+      errors.statement_due_day = 'Only a credit card account has a statement due date.';
+    } else {
+      const dueDay = parseDueDay(input.statement_due_day);
+      if (dueDay.error) errors.statement_due_day = dueDay.error;
+      else data.statement_due_day = dueDay.value;
+    }
   }
 
   if (!Object.keys(errors).length && !Object.keys(data).length) {
-    errors.body = 'Nothing to update. Send name, type, currency or credit_limit.';
+    errors.body = 'Nothing to update. Send name, type, currency, credit_limit or statement_due_day.';
   }
 
   return Object.keys(errors).length ? { errors } : { data };
