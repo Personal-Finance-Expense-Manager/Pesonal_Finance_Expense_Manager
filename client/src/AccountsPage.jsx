@@ -27,6 +27,7 @@ const emptyForm = {
   opening_balance: '',
   currency: 'INR',
   credit_limit: '',
+  statement_due_day: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +107,14 @@ function FieldError({ text }) {
   );
 }
 
+function niceDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
 function formatMoney(amount, currency) {
   const value = Number(amount);
   try {
@@ -113,6 +122,73 @@ function formatMoney(amount, currency) {
   } catch {
     return `${currency} ${value.toFixed(2)}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// US-07: net worth (REQ-20) and credit card position (REQ-21)
+// ---------------------------------------------------------------------------
+
+function NetWorthCard({ netWorth }) {
+  const value = Number(netWorth.net_worth);
+  return (
+    <div style={{ ...cardStyle, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+      <div style={{ gridColumn: '1 / -1' }}>
+        <div style={{ fontSize: 13, color: colors.muted, textTransform: 'uppercase', letterSpacing: '.05em' }}>Net worth</div>
+        <div style={{ fontSize: 32, fontWeight: 700, color: value < 0 ? colors.red : colors.text, fontVariantNumeric: 'tabular-nums' }}>
+          {formatMoney(netWorth.net_worth, netWorth.currency)}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, color: colors.muted }}>Assets (cash, bank, wallets)</div>
+        <div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(netWorth.total_assets, netWorth.currency)}</div>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, color: colors.muted }}>Credit card outstanding</div>
+        <div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>− {formatMoney(netWorth.total_liabilities, netWorth.currency)}</div>
+      </div>
+      {netWorth.accounts_not_included.length > 0 && (
+        <p style={{ gridColumn: '1 / -1', margin: 0, fontSize: 13, color: colors.muted }}>
+          Not included (different currency):{' '}
+          {netWorth.accounts_not_included.map((a) => `${a.name} (${a.currency})`).join(', ')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CardPosition({ card, currency }) {
+  const width = Math.min(card.utilisation_percent, 100);
+  const warn = card.high_utilisation_warning;
+  return (
+    <div style={{ marginTop: 10, minWidth: 240 }}>
+      <div
+        role="progressbar"
+        aria-label="Credit limit used"
+        aria-valuenow={card.utilisation_percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        style={{ height: 8, borderRadius: 999, background: '#0f172a', overflow: 'hidden' }}
+      >
+        <div style={{ width: `${width}%`, height: '100%', background: warn ? '#f59e0b' : colors.green }} />
+      </div>
+      <div style={{ fontSize: 13, color: colors.muted, marginTop: 6, lineHeight: 1.6 }}>
+        Limit {formatMoney(card.credit_limit, currency)} · Available{' '}
+        <strong style={{ color: colors.text }}>{formatMoney(card.available_credit, currency)}</strong>{' '}
+        · {card.utilisation_percent}% used
+        <br />
+        {card.next_statement_due_date
+          ? <>Statement due <strong style={{ color: colors.text }}>{niceDate(card.next_statement_due_date)}</strong></>
+          : 'No statement due day set'}
+      </div>
+      {warn && (
+        <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: '#422006', color: '#fde68a', fontSize: 13 }}>
+          {Number(card.over_limit_by) > 0
+            ? `Over the credit limit by ${formatMoney(card.over_limit_by, currency)}.`
+            : `You have used more than 80% of this card's limit.`}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +207,7 @@ export default function AccountsPage() {
 
   // null = not loaded yet
   const [accounts, setAccounts] = useState(null);
+  const [netWorth, setNetWorth] = useState(null); // US-07, REQ-20
   const [showArchived, setShowArchived] = useState(false);
 
   const [form, setForm] = useState(emptyForm);
@@ -172,6 +249,7 @@ export default function AccountsPage() {
     try {
       const data = await api(`?includeArchived=${showArchived}`);
       setAccounts(data.accounts);
+      setNetWorth(data.net_worth || null);
       setError('');
     } catch (err) {
       setAccounts([]);
@@ -214,6 +292,7 @@ export default function AccountsPage() {
       };
       if (form.type === 'credit_card') {
         payload.credit_limit = form.credit_limit === '' ? '0' : form.credit_limit;
+        if (form.statement_due_day !== '') payload.statement_due_day = form.statement_due_day;
       }
       const data = await api('', { method: 'POST', body: JSON.stringify(payload) });
       setForm(emptyForm);
@@ -240,6 +319,7 @@ export default function AccountsPage() {
       type: account.type,
       currency: account.currency,
       credit_limit: account.credit_limit,
+      statement_due_day: account.statement_due_day ?? '',
     });
   }
 
@@ -253,6 +333,9 @@ export default function AccountsPage() {
       if (editForm.currency !== account.currency) payload.currency = editForm.currency;
       if (editForm.type === 'credit_card' && editForm.credit_limit !== account.credit_limit) {
         payload.credit_limit = editForm.credit_limit;
+      }
+      if (editForm.type === 'credit_card' && String(editForm.statement_due_day) !== String(account.statement_due_day ?? '')) {
+        payload.statement_due_day = editForm.statement_due_day === '' ? null : editForm.statement_due_day;
       }
       if (Object.keys(payload).length === 0) {
         setEditingId(null);
@@ -361,6 +444,8 @@ export default function AccountsPage() {
 
         {userId && (
           <>
+            {netWorth && <NetWorthCard netWorth={netWorth} />}
+
             {/* Add account */}
             <form onSubmit={handleCreate} style={cardStyle} noValidate>
               <h2 style={{ margin: '0 0 16px', fontSize: 18 }}>Add an account</h2>
@@ -427,6 +512,20 @@ export default function AccountsPage() {
                       placeholder="0.00"
                     />
                     <FieldError text={formErrors.credit_limit} />
+                  </label>
+                )}
+
+                {isCard && (
+                  <label style={labelStyle}>
+                    Statement due day <span style={{ color: colors.muted, fontWeight: 400 }}>(1–31)</span>
+                    <input
+                      style={inputStyle}
+                      value={form.statement_due_day}
+                      onChange={(e) => setForm({ ...form, statement_due_day: e.target.value.replace(/\D/g, '').slice(0, 2) })}
+                      inputMode="numeric"
+                      placeholder="e.g. 5"
+                    />
+                    <FieldError text={formErrors.statement_due_day} />
                   </label>
                 )}
               </div>
@@ -513,6 +612,19 @@ export default function AccountsPage() {
                             <FieldError text={editErrors.credit_limit} />
                           </label>
                         )}
+                        {editForm.type === 'credit_card' && (
+                          <label style={labelStyle}>
+                            Statement due day
+                            <input
+                              style={inputStyle}
+                              value={editForm.statement_due_day}
+                              onChange={(e) => setEditForm({ ...editForm, statement_due_day: e.target.value.replace(/\D/g, '').slice(0, 2) })}
+                              inputMode="numeric"
+                              placeholder="1–31"
+                            />
+                            <FieldError text={editErrors.statement_due_day} />
+                          </label>
+                        )}
                       </div>
                       <p style={{ margin: '0 0 12px', color: colors.muted, fontSize: 13 }}>
                         The balance can't be edited here. It's calculated from the opening balance and your transactions.
@@ -540,13 +652,19 @@ export default function AccountsPage() {
                         <div style={{ color: colors.muted, fontSize: 14, marginTop: 2 }}>
                           {TYPE_LABELS[account.type] || account.type} · {account.currency}
                         </div>
-                        <div style={{ fontSize: 14, marginTop: 6 }}>
-                          {account.type === 'credit_card' ? 'Outstanding at start' : 'Opening balance'}:{' '}
-                          <strong>{formatMoney(account.opening_balance, account.currency)}</strong>
-                          {account.type === 'credit_card' && (
-                            <> · Limit <strong>{formatMoney(account.credit_limit, account.currency)}</strong></>
-                          )}
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 12, color: colors.muted, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                            {account.type === 'credit_card' ? 'Outstanding' : 'Current balance'}
+                          </div>
+                          <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                            {formatMoney(account.current_balance, account.currency)}
+                          </div>
+                          <div style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>
+                            {account.type === 'credit_card' ? 'Outstanding at start' : 'Opening balance'}{' '}
+                            {formatMoney(account.opening_balance, account.currency)}
+                          </div>
                         </div>
+                        {account.card && <CardPosition card={account.card} currency={account.currency} />}
                       </div>
 
                       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
