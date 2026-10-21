@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
+import accountRoutes from './routes/accounts.js';
+import { requireUser } from './middleware/currentUser.js';
 
 /**
  * Express application for the Personal Finance & Expense Manager API.
@@ -26,6 +28,7 @@ app.use(express.urlencoded({ extended: true }));
 // API routes
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/accounts', requireUser, accountRoutes);
 
 // Unknown route
 app.use((req, res) => {
