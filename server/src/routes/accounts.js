@@ -8,11 +8,14 @@ import {
   validateNewAccount,
   validateAccountUpdate,
 } from '../validators/account.js';
+import { accountSummary } from '../services/balanceService.js';
 
 /**
- * Accounts and wallets - US-06 (#20), SRS 5.2, REQ-13 to REQ-18.
+ * Accounts and wallets - US-06 (#20) and US-07 (#21), SRS 5.2, REQ-13 to REQ-21.
  *
- *   GET    /api/accounts              list (archived hidden unless ?includeArchived=true)
+ *   GET    /api/accounts              list with current balances and net worth
+ *                                     (archived hidden unless ?includeArchived=true) REQ-19, REQ-20, REQ-21
+ *   GET    /api/accounts/summary      net worth and every balance                    REQ-19, REQ-20, REQ-21
  *   POST   /api/accounts              create                       REQ-13, REQ-14, REQ-15
  *   GET    /api/accounts/:id          one account
  *   PATCH  /api/accounts/:id          edit name/type/currency/limit REQ-16
@@ -36,8 +39,11 @@ function toMoney(value) {
   return value == null ? '0.00' : new Decimal(value.toString()).toFixed(2);
 }
 
-/** Shape an account document for the client. Decimal128 becomes a string. */
-function present(account) {
+/**
+ * Shape an account document for the client. Decimal128 becomes a string.
+ * `position` is this account's entry from accountSummary() (US-07), when known.
+ */
+function present(account, position) {
   return {
     id: account._id.toString(),
     name: account.name,
@@ -45,9 +51,26 @@ function present(account) {
     currency: account.currency,
     opening_balance: toMoney(account.opening_balance),
     credit_limit: toMoney(account.credit_limit),
+    statement_due_day: account.statement_due_day ?? null,
+    current_balance: position ? position.current_balance : toMoney(account.opening_balance),
+    card: position ? position.card : null,
     is_archived: Boolean(account.is_archived),
     created_at: account.createdAt,
     updated_at: account.updatedAt,
+  };
+}
+
+/** The signed-in user's base currency (works with the interim and the US-04 user object). */
+function baseCurrencyOf(req) {
+  return req.user.baseCurrency || req.user.base_currency || 'INR';
+}
+
+/** Current balances keyed by account id, plus net worth. */
+async function positions(req) {
+  const summary = await accountSummary(req.user.id, baseCurrencyOf(req));
+  return {
+    byId: new Map(summary.balances.map((b) => [b.id, b])),
+    netWorth: summary.net_worth,
   };
 }
 
@@ -100,12 +123,27 @@ router.get('/', async (req, res, next) => {
     const filter = { user_id: req.user.id };
     if (req.query.includeArchived !== 'true') filter.is_archived = false;
 
-    const accounts = await Account.find(filter)
-      .sort({ is_archived: 1, name: 1 })
-      .collation(NAME_COLLATION)
-      .lean();
+    const [accounts, { byId, netWorth }] = await Promise.all([
+      Account.find(filter)
+        .sort({ is_archived: 1, name: 1 })
+        .collation(NAME_COLLATION)
+        .lean(),
+      positions(req),
+    ]);
 
-    res.json({ accounts: accounts.map(present) });
+    res.json({
+      accounts: accounts.map((a) => present(a, byId.get(a._id.toString()))),
+      net_worth: netWorth,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/accounts/summary  (US-07: REQ-19, REQ-20, REQ-21)
+router.get('/summary', async (req, res, next) => {
+  try {
+    res.json(await accountSummary(req.user.id, baseCurrencyOf(req)));
   } catch (error) {
     next(error);
   }
@@ -114,7 +152,7 @@ router.get('/', async (req, res, next) => {
 // POST /api/accounts
 router.post('/', async (req, res, next) => {
   try {
-    const { data, errors } = validateNewAccount(req.body, req.user.baseCurrency);
+    const { data, errors } = validateNewAccount(req.body, baseCurrencyOf(req));
 
     if (errors) {
       return res.status(400).json({ message: 'Please correct the highlighted fields.', errors });
@@ -145,7 +183,8 @@ router.get('/:id', async (req, res, next) => {
   try {
     const account = await findOwnAccount(req, res);
     if (!account) return undefined;
-    return res.json({ account: present(account) });
+    const { byId } = await positions(req);
+    return res.json({ account: present(account, byId.get(account._id.toString())) });
   } catch (error) {
     return next(error);
   }
