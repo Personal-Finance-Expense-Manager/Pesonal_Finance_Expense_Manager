@@ -409,6 +409,7 @@ export default function AccountsPage() {
         <header style={{ marginBottom: 24 }}>
           <nav style={{ display: 'flex', gap: 16, fontSize: 14 }}>
             <a href="#/" style={{ color: colors.muted, textDecoration: 'none' }}>← Back</a>
+            <a href="#/dashboard" style={{ color: colors.muted, textDecoration: 'none' }}>Dashboard</a>
             <a href="#/budgets" style={{ color: colors.muted, textDecoration: 'none' }}>Budgets</a>
           </nav>
           <h1 style={{ fontSize: 27, margin: '10px 0 6px' }}>Accounts &amp; wallets</h1>
