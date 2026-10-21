@@ -8,7 +8,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "echo \"No server tests yet - added from US-02 onwards\" && exit 0"
+    "test": "node --test test/account-validation.test.js test/budget.test.js",
+    "seed:dev": "node scripts/seed-dev-user.js",
+    "dev:spend": "node scripts/dev-spend.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
