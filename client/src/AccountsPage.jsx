@@ -324,9 +324,10 @@ export default function AccountsPage() {
     >
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <header style={{ marginBottom: 24 }}>
-          <a href="#/" style={{ color: colors.muted, fontSize: 14, textDecoration: 'none' }}>
-            ← Back
-          </a>
+          <nav style={{ display: 'flex', gap: 16, fontSize: 14 }}>
+            <a href="#/" style={{ color: colors.muted, textDecoration: 'none' }}>← Back</a>
+            <a href="#/budgets" style={{ color: colors.muted, textDecoration: 'none' }}>Budgets</a>
+          </nav>
           <h1 style={{ fontSize: 27, margin: '10px 0 6px' }}>Accounts &amp; wallets</h1>
           <p style={{ color: colors.muted, margin: 0 }}>
             Your cash, bank, card and wallet accounts. Every transaction belongs to one of these.
