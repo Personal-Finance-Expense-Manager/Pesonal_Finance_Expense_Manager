@@ -3,6 +3,7 @@ import cors from 'cors';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import accountRoutes from './routes/accounts.js';
+import budgetRoutes from './routes/budgets.js';
 import { requireUser } from './middleware/currentUser.js';
 
 /**
@@ -29,6 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', requireUser, accountRoutes);
+app.use('/api/budgets', requireUser, budgetRoutes);
 
 // Unknown route
 app.use((req, res) => {
