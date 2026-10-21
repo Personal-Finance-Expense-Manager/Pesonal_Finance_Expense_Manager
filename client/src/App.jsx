@@ -20,21 +20,50 @@ const initialForm = {
   privacyPolicyAccepted: false,
 };
 
+function getInitialScreen() {
+  const params = new URLSearchParams(window.location.search);
+
+  if (
+    window.location.pathname === '/reset-password' &&
+    params.get('token') &&
+    params.get('email')
+  ) {
+    return {
+      mode: 'resetConfirm',
+      email: params.get('email'),
+      token: params.get('token'),
+    };
+  }
+
+  return { mode: 'register', email: '', token: '' };
+}
+
 export default function App() {
-  const [mode, setMode] = useState('register');
+  const [initialScreen] = useState(getInitialScreen);
+  const [mode, setMode] = useState(initialScreen.mode);
   const [form, setForm] = useState(initialForm);
+
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [resetEmail, setResetEmail] = useState(initialScreen.email);
+  const [resetToken] = useState(initialScreen.token);
+  const [newPassword, setNewPassword] = useState('');
+
   const [code, setCode] = useState('');
+  const [token, setToken] = useState(null);
+  const [loggedInUser, setLoggedInUser] = useState(null);
+
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [health, setHealth] = useState('Checking connection...');
+  const [health, setHealth] = useState('Checking API connection...');
   const [unmetRules, setUnmetRules] = useState([]);
 
   useEffect(() => {
     fetch(`${API_URL}/api/health`)
-      .then((r) => {
-        if (!r.ok) throw new Error('API unavailable');
-        return r.json();
+      .then((response) => {
+        if (!response.ok) throw new Error('API unavailable');
+        return response.json();
       })
       .then((data) => {
         setHealth(
@@ -46,27 +75,47 @@ export default function App() {
       .catch(() => setHealth('API connection unavailable'));
   }, []);
 
+  function clearFeedback() {
+    setError('');
+    setMessage('');
+    setUnmetRules([]);
+  }
+
+  function navigate(nextMode) {
+    clearFeedback();
+    setMode(nextMode);
+  }
+
   function updateField(event) {
     const { name, value, checked, type } = event.target;
+
     setForm((current) => ({
       ...current,
       [name]: type === 'checkbox' ? checked : value,
     }));
   }
 
-  async function apiRequest(path, payload) {
+  async function apiRequest(path, payload, bearerToken = null) {
+    const headers = { 'Content-Type': 'application/json' };
+
+    if (bearerToken) {
+      headers.Authorization = `Bearer ${bearerToken}`;
+    }
+
     const response = await fetch(`${API_URL}/api/auth/${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     });
 
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const err = new Error(data.message || 'Request failed.');
-      err.unmetRules = data.unmetRules || [];
-      throw err;
+      const requestError = new Error(
+        data.message || 'The request failed.'
+      );
+      requestError.unmetRules = data.unmetRules || [];
+      throw requestError;
     }
 
     return data;
@@ -74,22 +123,10 @@ export default function App() {
 
   async function handleRegister(event) {
     event.preventDefault();
-    setError('');
-    setMessage('');
-    setUnmetRules([]);
-
-    const rules = passwordChecks
-      .filter((rule) => !rule.test(form.password))
-      .map((rule) => rule.label);
-
-    if (rules.length) {
-      setUnmetRules(rules);
-      setError('Please meet all password requirements.');
-      return;
-    }
+    clearFeedback();
 
     if (!form.termsAccepted || !form.privacyPolicyAccepted) {
-      setError('Please accept both the Terms of Service and Privacy Policy.');
+      setError('Accept both policies to continue.');
       return;
     }
 
@@ -97,11 +134,11 @@ export default function App() {
 
     try {
       const result = await apiRequest('register', form);
-      setMode('verify');
       setMessage(result.message);
-    } catch (err) {
-      setError(err.message);
-      setUnmetRules(err.unmetRules || []);
+      setMode('verify');
+    } catch (requestError) {
+      setError(requestError.message);
+      setUnmetRules(requestError.unmetRules || []);
     } finally {
       setBusy(false);
     }
@@ -109,8 +146,7 @@ export default function App() {
 
   async function handleVerify(event) {
     event.preventDefault();
-    setError('');
-    setMessage('');
+    clearFeedback();
     setBusy(true);
 
     try {
@@ -119,18 +155,17 @@ export default function App() {
         code,
       });
 
-      setMode('complete');
       setMessage(result.message);
-    } catch (err) {
-      setError(err.message);
+      setMode('complete');
+    } catch (requestError) {
+      setError(requestError.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function handleResend() {
-    setError('');
-    setMessage('');
+    clearFeedback();
     setBusy(true);
 
     try {
@@ -138,8 +173,105 @@ export default function App() {
         email: form.email,
       });
       setMessage(result.message);
-    } catch (err) {
-      setError(err.message);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    clearFeedback();
+    setBusy(true);
+
+    try {
+      const result = await apiRequest('login', {
+        email: loginEmail,
+        password: loginPassword,
+      });
+
+      setToken(result.token);
+      setLoggedInUser(result.user);
+      setLoginPassword('');
+      setMessage('Sign-in successful.');
+      setMode('account');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLogout() {
+    clearFeedback();
+    setBusy(true);
+
+    try {
+      await apiRequest('logout', {}, token);
+
+      setToken(null);
+      setLoggedInUser(null);
+      setLoginPassword('');
+      setMessage('Signed out successfully.');
+      setMode('login');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResetRequest(event) {
+    event.preventDefault();
+    clearFeedback();
+    setBusy(true);
+
+    try {
+      const result = await apiRequest('password-reset/request', {
+        email: resetEmail,
+      });
+      setMessage(result.message);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResetConfirm(event) {
+    event.preventDefault();
+    clearFeedback();
+
+    const missingRules = passwordChecks
+      .filter((rule) => !rule.test(newPassword))
+      .map((rule) => rule.label);
+
+    if (missingRules.length > 0) {
+      setError('Password does not meet the requirements.');
+      setUnmetRules(missingRules);
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const result = await apiRequest('password-reset/confirm', {
+        email: resetEmail,
+        token: resetToken,
+        newPassword,
+      });
+
+      setNewPassword('');
+      setLoginEmail(resetEmail);
+      setMessage(result.message);
+      setMode('login');
+
+      // Remove the one-time token from the address bar.
+      window.history.replaceState({}, document.title, '/');
+    } catch (requestError) {
+      setError(requestError.message);
+      setUnmetRules(requestError.unmetRules || []);
     } finally {
       setBusy(false);
     }
@@ -149,34 +281,53 @@ export default function App() {
     width: '100%',
     boxSizing: 'border-box',
     padding: '12px 14px',
-    marginTop: '7px',
+    marginTop: 7,
+    marginBottom: 17,
     border: '1px solid #344054',
-    borderRadius: '9px',
+    borderRadius: 9,
     background: '#101827',
     color: '#f8fafc',
-    fontSize: '15px',
+    fontSize: 15,
   };
 
   const labelStyle = {
     display: 'block',
-    marginBottom: '17px',
     color: '#e2e8f0',
-    fontSize: '14px',
+    fontSize: 14,
     fontWeight: 500,
   };
 
   const buttonStyle = {
     width: '100%',
-    padding: '13px',
-    border: 'none',
-    borderRadius: '9px',
+    padding: 13,
+    border: 0,
+    borderRadius: 9,
     background: busy ? '#64748b' : '#16a34a',
     color: '#fff',
-    fontSize: '15px',
+    fontSize: 15,
     fontWeight: 700,
     cursor: busy ? 'wait' : 'pointer',
-    marginTop: '8px',
+    marginTop: 8,
   };
+
+  function renderPasswordRules(password) {
+    return (
+      <div style={{ marginBottom: 16, fontSize: 13, lineHeight: 1.9 }}>
+        {passwordChecks.map((rule) => {
+          const passed = rule.test(password);
+
+          return (
+            <div
+              key={rule.label}
+              style={{ color: passed ? '#86efac' : '#94a3b8' }}
+            >
+              {passed ? '✓' : '○'} {rule.label}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <main
@@ -211,7 +362,7 @@ export default function App() {
             Personal Finance
           </h1>
           <p style={{ color: '#94a3b8', margin: 0 }}>
-            Expense Manager · Create your account
+            Expense Manager · Team 9
           </p>
         </header>
 
@@ -226,10 +377,7 @@ export default function App() {
         >
           {mode === 'register' && (
             <>
-              <h2 style={{ marginTop: 0, fontSize: 22 }}>Create an account</h2>
-              <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.6 }}>
-                Register with your details and verify your email to get started.
-              </p>
+              <h2 style={{ marginTop: 0 }}>Create an account</h2>
 
               <form onSubmit={handleRegister}>
                 <label style={labelStyle}>
@@ -242,7 +390,7 @@ export default function App() {
                     autoComplete="name"
                     maxLength={120}
                     required
-                    placeholder="Enter your full name"
+                    placeholder="Your full name"
                   />
                 </label>
 
@@ -261,7 +409,7 @@ export default function App() {
                 </label>
 
                 <label style={labelStyle}>
-                  Mobile number <span style={{ color: '#94a3b8' }}>(optional)</span>
+                  Mobile number (optional)
                   <input
                     style={inputStyle}
                     name="mobileNumber"
@@ -270,7 +418,6 @@ export default function App() {
                     onChange={updateField}
                     autoComplete="tel"
                     maxLength={30}
-                    placeholder="Enter mobile number"
                   />
                 </label>
 
@@ -289,40 +436,9 @@ export default function App() {
                   />
                 </label>
 
-                <div
-                  style={{
-                    marginTop: -7,
-                    marginBottom: 19,
-                    fontSize: 13,
-                    lineHeight: 1.9,
-                  }}
-                >
-                  {passwordChecks.map((rule) => {
-                    const passed = rule.test(form.password);
-                    return (
-                      <div
-                        key={rule.label}
-                        style={{
-                          color: passed ? '#86efac' : '#94a3b8',
-                        }}
-                      >
-                        {passed ? '✓' : '○'} {rule.label}
-                      </div>
-                    );
-                  })}
-                </div>
+                {renderPasswordRules(form.password)}
 
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 10,
-                    marginBottom: 15,
-                    fontSize: 13,
-                    color: '#cbd5e1',
-                    lineHeight: 1.5,
-                  }}
-                >
+                <label style={{ display: 'flex', gap: 10, marginBottom: 15 }}>
                   <input
                     type="checkbox"
                     name="termsAccepted"
@@ -333,17 +449,7 @@ export default function App() {
                   I accept the Terms of Service.
                 </label>
 
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 10,
-                    marginBottom: 17,
-                    fontSize: 13,
-                    color: '#cbd5e1',
-                    lineHeight: 1.5,
-                  }}
-                >
+                <label style={{ display: 'flex', gap: 10, marginBottom: 17 }}>
                   <input
                     type="checkbox"
                     name="privacyPolicyAccepted"
@@ -351,34 +457,36 @@ export default function App() {
                     onChange={updateField}
                     required
                   />
-                  I have read and accept the Privacy Policy.
+                  I accept the Privacy Policy.
                 </label>
 
-                <button style={buttonStyle} type="submit" disabled={busy}>
+                <button style={buttonStyle} disabled={busy}>
                   {busy ? 'Creating account...' : 'Create account'}
                 </button>
               </form>
+
+              <button
+                type="button"
+                style={{ ...buttonStyle, background: '#334155' }}
+                onClick={() => navigate('login')}
+              >
+                Already registered? Sign in
+              </button>
             </>
           )}
 
           {mode === 'verify' && (
             <>
-              <h2 style={{ marginTop: 0, fontSize: 22 }}>Verify your email</h2>
+              <h2 style={{ marginTop: 0 }}>Verify your email</h2>
               <p style={{ color: '#94a3b8', lineHeight: 1.7 }}>
-                Enter the six-digit code sent to <strong>{form.email}</strong>.
-                The code expires in 10 minutes.
+                Enter the six-digit code sent to {form.email}.
               </p>
 
               <form onSubmit={handleVerify}>
                 <label style={labelStyle}>
-                  Six-digit verification code
+                  Verification code
                   <input
-                    style={{
-                      ...inputStyle,
-                      textAlign: 'center',
-                      letterSpacing: 8,
-                      fontSize: 22,
-                    }}
+                    style={{ ...inputStyle, fontSize: 22, letterSpacing: 8 }}
                     value={code}
                     onChange={(event) =>
                       setCode(event.target.value.replace(/\D/g, '').slice(0, 6))
@@ -388,26 +496,19 @@ export default function App() {
                     pattern="[0-9]{6}"
                     maxLength={6}
                     required
-                    placeholder="000000"
                   />
                 </label>
 
-                <button style={buttonStyle} type="submit" disabled={busy}>
-                  {busy ? 'Verifying...' : 'Verify email'}
+                <button style={buttonStyle} disabled={busy}>
+                  Verify email
                 </button>
               </form>
 
               <button
                 type="button"
-                disabled={busy}
+                style={{ ...buttonStyle, background: '#334155' }}
                 onClick={handleResend}
-                style={{
-                  ...buttonStyle,
-                  color: '#86efac',
-                  background: 'transparent',
-                  border: '1px solid #166534',
-                  cursor: busy ? 'wait' : 'pointer',
-                }}
+                disabled={busy}
               >
                 Resend verification code
               </button>
@@ -415,19 +516,171 @@ export default function App() {
           )}
 
           {mode === 'complete' && (
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div style={{ fontSize: 46, color: '#86efac' }}>✓</div>
+            <>
               <h2>Email verified!</h2>
-              <p style={{ color: '#cbd5e1', lineHeight: 1.7 }}>
-                Your registration email has been verified successfully.
+              <p>Your registration email was verified successfully.</p>
+              <button
+                style={buttonStyle}
+                onClick={() => {
+                  setLoginEmail(form.email);
+                  navigate('login');
+                }}
+              >
+                Continue to sign in
+              </button>
+            </>
+          )}
+
+          {mode === 'login' && (
+            <>
+              <h2 style={{ marginTop: 0 }}>Sign in</h2>
+              <p style={{ color: '#94a3b8', lineHeight: 1.6 }}>
+                Sign in securely to access your financial information.
               </p>
-            </div>
+
+              <form onSubmit={handleLogin}>
+                <label style={labelStyle}>
+                  Email address
+                  <input
+                    style={inputStyle}
+                    type="email"
+                    value={loginEmail}
+                    onChange={(event) => setLoginEmail(event.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </label>
+
+                <label style={labelStyle}>
+                  Password
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    value={loginPassword}
+                    onChange={(event) => setLoginPassword(event.target.value)}
+                    autoComplete="current-password"
+                    maxLength={128}
+                    required
+                  />
+                </label>
+
+                <button style={buttonStyle} disabled={busy}>
+                  {busy ? 'Signing in...' : 'Sign in'}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                style={{ ...buttonStyle, background: '#334155' }}
+                onClick={() => navigate('resetRequest')}
+              >
+                Forgot password?
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...buttonStyle,
+                  background: 'transparent',
+                  border: '1px solid #475569',
+                }}
+                onClick={() => navigate('register')}
+              >
+                Create an account
+              </button>
+            </>
+          )}
+
+          {mode === 'resetRequest' && (
+            <>
+              <h2 style={{ marginTop: 0 }}>Reset your password</h2>
+              <p style={{ color: '#94a3b8', lineHeight: 1.7 }}>
+                Enter your registered email. If an eligible account exists,
+                we'll send a reset link valid for 15 minutes.
+              </p>
+
+              <form onSubmit={handleResetRequest}>
+                <label style={labelStyle}>
+                  Email address
+                  <input
+                    style={inputStyle}
+                    type="email"
+                    value={resetEmail}
+                    onChange={(event) => setResetEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                </label>
+
+                <button style={buttonStyle} disabled={busy}>
+                  {busy ? 'Requesting...' : 'Send reset link'}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                style={{ ...buttonStyle, background: '#334155' }}
+                onClick={() => navigate('login')}
+              >
+                Back to sign in
+              </button>
+            </>
+          )}
+
+          {mode === 'resetConfirm' && (
+            <>
+              <h2 style={{ marginTop: 0 }}>Choose a new password</h2>
+              <p style={{ color: '#94a3b8', lineHeight: 1.7 }}>
+                Reset link for {resetEmail}. The link can only be used once
+                and expires after 15 minutes.
+              </p>
+
+              <form onSubmit={handleResetConfirm}>
+                <label style={labelStyle}>
+                  New password
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    autoComplete="new-password"
+                    maxLength={128}
+                    required
+                  />
+                </label>
+
+                {renderPasswordRules(newPassword)}
+
+                <button style={buttonStyle} disabled={busy}>
+                  {busy ? 'Resetting...' : 'Reset password'}
+                </button>
+              </form>
+            </>
+          )}
+
+          {mode === 'account' && loggedInUser && (
+            <>
+              <h2 style={{ marginTop: 0 }}>You're signed in</h2>
+              <p style={{ color: '#94a3b8' }}>
+                Welcome, {loggedInUser.name}.
+              </p>
+              <p>{loggedInUser.email}</p>
+
+              <button
+                style={buttonStyle}
+                onClick={handleLogout}
+                disabled={busy}
+              >
+                {busy ? 'Signing out...' : 'Sign out'}
+              </button>
+            </>
           )}
 
           {error && (
-            <p
+            <div
               role="alert"
               style={{
+                marginTop: 18,
                 padding: 12,
                 background: '#451a1a',
                 color: '#fecaca',
@@ -437,18 +690,22 @@ export default function App() {
               }}
             >
               {error}
+
               {unmetRules.length > 0 && (
                 <ul>
-                  {unmetRules.map((rule) => <li key={rule}>{rule}</li>)}
+                  {unmetRules.map((rule) => (
+                    <li key={rule}>{rule}</li>
+                  ))}
                 </ul>
               )}
-            </p>
+            </div>
           )}
 
           {message && (
             <p
               role="status"
               style={{
+                marginTop: 18,
                 padding: 12,
                 background: '#123524',
                 color: '#bbf7d0',
