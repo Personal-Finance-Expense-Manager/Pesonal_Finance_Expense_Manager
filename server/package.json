@@ -1,3 +1,4 @@
+
 {
   "name": "pfem-server",
   "version": "1.0.0",
@@ -8,7 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/transaction-validation.test.js",
+    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/dashboard.test.js test/transaction-validation.test.js",
     "test:integration": "node --test --test-concurrency=1 test/*.integration.test.js",
     "seed:dev": "node scripts/seed-dev-user.js",
     "dev:spend": "node scripts/dev-spend.js"
