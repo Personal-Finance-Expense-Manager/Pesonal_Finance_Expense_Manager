@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import validator from 'validator';
 import User from '../models/User.js';
+import { createDefaultCategories } from '../services/categoryService.js';
 import Session from '../models/Session.js';
 import authenticate from '../middleware/authenticate.js';
 
@@ -213,6 +214,15 @@ router.post('/register', async (req, res) => {
       }
 
       throw error;
+    }
+
+    // REQ-35: every new user starts with the default categories. A failure
+    // here must not fail the registration - the user can seed them later from
+    // the categories screen - so it is logged and swallowed.
+    try {
+      await createDefaultCategories(user._id);
+    } catch (error) {
+      console.error('[auth] Default categories failed:', error.message);
     }
 
     try {

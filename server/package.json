@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js",
+    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js",
     "seed:dev": "node scripts/seed-dev-user.js",
     "dev:spend": "node scripts/dev-spend.js"
   },

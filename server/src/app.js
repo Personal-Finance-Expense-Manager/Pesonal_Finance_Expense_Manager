@@ -4,6 +4,7 @@ import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import accountRoutes from './routes/accounts.js';
 import budgetRoutes from './routes/budgets.js';
+import categoryRoutes from './routes/categories.js';
 import { requireUser } from './middleware/currentUser.js';
 
 /**
@@ -31,6 +32,7 @@ app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', requireUser, accountRoutes);
 app.use('/api/budgets', requireUser, budgetRoutes);
+app.use('/api/categories', requireUser, categoryRoutes);
 
 // Unknown route
 app.use((req, res) => {

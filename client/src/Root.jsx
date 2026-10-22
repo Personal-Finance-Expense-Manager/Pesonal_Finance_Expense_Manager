@@ -4,6 +4,7 @@ import App from './App.jsx';
 import AccountsPage from './AccountsPage.jsx';
 import BudgetsPage from './BudgetsPage.jsx';
 import TransactionsPage from './TransactionsPage.jsx';
+import CategoriesPage from './CategoriesPage.jsx';
 
 export default function Root() {
   const [hash, setHash] = useState(window.location.hash);
@@ -18,6 +19,7 @@ export default function Root() {
   if (hash === '#/accounts') return <AccountsPage />;
   if (hash === '#/budgets') return <BudgetsPage />;
   if (hash === '#/transactions') return <TransactionsPage />;
+  if (hash === '#/categories') return <CategoriesPage />;
 
   return <App />;
 }
