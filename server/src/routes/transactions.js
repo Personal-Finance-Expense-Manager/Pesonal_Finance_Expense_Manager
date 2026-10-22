@@ -5,6 +5,21 @@ import Account from '../models/Account.js';
 import Tag from '../models/Tag.js';
 import TransactionTag from '../models/TransactionTag.js';
 import { validateTransactionInput } from '../validators/transaction.js';
+import { createTransfer, presentTransfer } from '../services/transferService.js';
+import {
+  resolveTagIds,
+  loadTagNames,
+  presentTransaction,
+  updateTransaction,
+  deleteTransaction,
+  restoreTransaction,
+} from '../services/transactionService.js';
+import {
+  listRecycleBin,
+  restorableUntil,
+  RETENTION_DAYS,
+} from '../services/recycleBinService.js';
+import { sendApiError } from '../utils/apiError.js';
 
 const router = express.Router();
 
@@ -12,7 +27,11 @@ const router = express.Router();
 const escapeRegex = (value) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Browse, filter, search and paginate the current user's transactions.
+// ---------------------------------------------------------------------------
+// US-10 (#26): Browse, filter, search and paginate transactions.
+// REQ-30, REQ-31.
+// ---------------------------------------------------------------------------
+
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -94,6 +113,7 @@ router.get('/', async (req, res, next) => {
       });
     }
 
+    // Date range filtering includes the entire end date.
     if (startDate || endDate) {
       query.transaction_date = {};
 
@@ -112,6 +132,7 @@ router.get('/', async (req, res, next) => {
       }
     }
 
+    // Account filter.
     if (accountId) {
       if (!mongoose.isValidObjectId(accountId)) {
         return res.status(400).json({
@@ -122,6 +143,7 @@ router.get('/', async (req, res, next) => {
       query.account_id = new mongoose.Types.ObjectId(accountId);
     }
 
+    // Category filter.
     if (categoryId) {
       if (!mongoose.isValidObjectId(categoryId)) {
         return res.status(400).json({
@@ -132,6 +154,7 @@ router.get('/', async (req, res, next) => {
       query.category_id = new mongoose.Types.ObjectId(categoryId);
     }
 
+    // Transaction type filter.
     if (type) {
       if (!['income', 'expense'].includes(type)) {
         return res.status(400).json({
@@ -142,12 +165,15 @@ router.get('/', async (req, res, next) => {
       query.type = type;
     }
 
+    // Amount range filters.
     const moneyPattern = /^\d+(?:\.\d{1,2})?$/;
 
     if (
       minAmount !== undefined &&
-      (!moneyPattern.test(minAmount) ||
-        !Number.isFinite(Number(minAmount)))
+      (
+        !moneyPattern.test(minAmount) ||
+        !Number.isFinite(Number(minAmount))
+      )
     ) {
       return res.status(400).json({
         message: 'Invalid minimum amount.',
@@ -156,8 +182,10 @@ router.get('/', async (req, res, next) => {
 
     if (
       maxAmount !== undefined &&
-      (!moneyPattern.test(maxAmount) ||
-        !Number.isFinite(Number(maxAmount)))
+      (
+        !moneyPattern.test(maxAmount) ||
+        !Number.isFinite(Number(maxAmount))
+      )
     ) {
       return res.status(400).json({
         message: 'Invalid maximum amount.',
@@ -188,6 +216,7 @@ router.get('/', async (req, res, next) => {
       }
     }
 
+    // Case-insensitive note-text search.
     if (search !== undefined) {
       if (typeof search !== 'string' || search.length > 200) {
         return res.status(400).json({
@@ -203,35 +232,45 @@ router.get('/', async (req, res, next) => {
       }
     }
 
-    if (tag !== undefined && tag.trim()) {
-      if (tag.length > 50) {
+    // Tag filter.
+    if (tag !== undefined) {
+      if (typeof tag !== 'string') {
         return res.status(400).json({
-          message: 'Tag name is too long.',
+          message: 'Invalid tag.',
         });
       }
 
-      const matchedTag = await Tag.findOne({
-        user_id: userObjectId,
-        name: {
-          $regex: `^${escapeRegex(tag.trim())}$`,
-          $options: 'i',
-        },
-      }).select('_id');
+      if (tag.trim()) {
+        if (tag.length > 50) {
+          return res.status(400).json({
+            message: 'Tag name is too long.',
+          });
+        }
 
-      const links = matchedTag
-        ? await TransactionTag.find({
-            user_id: userObjectId,
-            tag_id: matchedTag._id,
-          })
-            .select('transaction_id')
-            .lean()
-        : [];
+        const matchedTag = await Tag.findOne({
+          user_id: userObjectId,
+          name: {
+            $regex: `^${escapeRegex(tag.trim())}$`,
+            $options: 'i',
+          },
+        }).select('_id');
 
-      query._id = {
-        $in: links.map((link) => link.transaction_id),
-      };
+        const links = matchedTag
+          ? await TransactionTag.find({
+              user_id: userObjectId,
+              tag_id: matchedTag._id,
+            })
+              .select('transaction_id')
+              .lean()
+          : [];
+
+        query._id = {
+          $in: links.map((link) => link.transaction_id),
+        };
+      }
     }
 
+    // Fetch the current page, filtered count and filtered total.
     const [transactions, totalItems, totals] = await Promise.all([
       Transaction.find(query)
         .sort({ transaction_date: -1, _id: -1 })
@@ -243,10 +282,10 @@ router.get('/', async (req, res, next) => {
 
       Transaction.countDocuments(query),
 
-      // Use an ObjectId in the shared query so aggregation matches
-      // the same user as the transaction list and count queries.
       Transaction.aggregate([
-        { $match: query },
+        {
+          $match: query,
+        },
         {
           $group: {
             _id: null,
@@ -258,6 +297,7 @@ router.get('/', async (req, res, next) => {
       ]),
     ]);
 
+    // Load tags for transactions displayed on the current page.
     const transactionIds = transactions.map((item) => item._id);
 
     const tagLinks = transactionIds.length
@@ -320,7 +360,10 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// Create an income or expense transaction.
+// ---------------------------------------------------------------------------
+// Create an income, expense or transfer transaction.
+// ---------------------------------------------------------------------------
+
 router.post('/', async (req, res, next) => {
   try {
     const result = validateTransactionInput(req.body);
@@ -334,6 +377,16 @@ router.post('/', async (req, res, next) => {
 
     const data = result.data;
     const userId = req.user.id;
+
+    // REQ-24: a transfer is one linked record, not income and expense records.
+    if (data.type === 'transfer') {
+      const transfer = await createTransfer(userId, data);
+
+      return res.status(201).json({
+        message: 'Transaction created successfully.',
+        data: presentTransfer(transfer),
+      });
+    }
 
     const account = await Account.findOne({
       _id: data.account_id,
@@ -376,26 +429,8 @@ router.post('/', async (req, res, next) => {
 
     try {
       if (data.tags.length) {
-        const tagIds = [];
-
-        for (const name of data.tags) {
-          let tag = await Tag.findOne({
-            user_id: userId,
-            name: {
-              $regex: `^${escapeRegex(name)}$`,
-              $options: 'i',
-            },
-          });
-
-          if (!tag) {
-            tag = await Tag.create({
-              user_id: userId,
-              name,
-            });
-          }
-
-          tagIds.push(tag._id);
-        }
+        // Use the current transaction service to resolve or create tag IDs.
+        const tagIds = await resolveTagIds(userId, data.tags);
 
         await TransactionTag.insertMany(
           tagIds.map((tagId) => ({
@@ -429,7 +464,105 @@ router.post('/', async (req, res, next) => {
       },
     });
   } catch (error) {
+    sendApiError(res, next, error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// US-09 (#25): Edit, delete and restore transactions.
+// REQ-28, REQ-29.
+// ---------------------------------------------------------------------------
+
+// List the caller's deleted transactions that can still be restored.
+// Declare this before the /:id routes so "recycle-bin" isn't treated as an ID.
+router.get('/recycle-bin', async (req, res, next) => {
+  try {
+    const { transactions, transfers } =
+      await listRecycleBin(req.user.id);
+
+    const tags = await loadTagNames(
+      transactions.map((transaction) => transaction._id),
+    );
+
+    const items = [
+      ...transactions.map((transaction) => ({
+        ...presentTransaction(
+          transaction,
+          tags.get(transaction._id.toString()),
+        ),
+        deleted_at: transaction.deleted_at,
+        restorable_until: restorableUntil(transaction.deleted_at),
+      })),
+
+      ...transfers.map((transfer) => ({
+        ...presentTransfer(transfer),
+        deleted_at: transfer.deleted_at,
+        restorable_until: restorableUntil(transfer.deleted_at),
+      })),
+    ].sort((a, b) => b.deleted_at - a.deleted_at);
+
+    return res.json({
+      retention_days: RETENTION_DAYS,
+      items,
+    });
+  } catch (error) {
     next(error);
+  }
+});
+
+// Edit fields of a transaction or transfer (REQ-28).
+// Send only the fields that should change.
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const data = await updateTransaction(
+      req.user.id,
+      req.params.id,
+      req.body,
+      { ip: req.ip },
+    );
+
+    return res.json({
+      message: 'Transaction updated successfully.',
+      data,
+    });
+  } catch (error) {
+    sendApiError(res, next, error);
+  }
+});
+
+// Move a transaction or transfer to the recycle bin (REQ-29).
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const data = await deleteTransaction(
+      req.user.id,
+      req.params.id,
+      { ip: req.ip },
+    );
+
+    return res.json({
+      message: `Transaction moved to the recycle bin. You can restore it within ${RETENTION_DAYS} days.`,
+      data,
+    });
+  } catch (error) {
+    sendApiError(res, next, error);
+  }
+});
+
+// Restore a deleted transaction or transfer within 30 days (REQ-29).
+router.post('/:id/restore', async (req, res, next) => {
+  try {
+    const data = await restoreTransaction(
+      req.user.id,
+      req.params.id,
+      { ip: req.ip },
+    );
+
+    return res.json({
+      message: 'Transaction restored successfully.',
+      data,
+    });
+  } catch (error) {
+    sendApiError(res, next, error);
   }
 });
 

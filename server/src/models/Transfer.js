@@ -38,6 +38,16 @@ const transferSchema = new mongoose.Schema({
     maxlength: 1000,
     default: '',
   },
+  // Soft delete / recycle bin (US-09, REQ-29): same fields as Transaction.
+  is_deleted: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  deleted_at: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
 });
@@ -57,6 +67,21 @@ transferSchema.index({
   user_id: 1,
   to_account_id: 1,
   transfer_date: -1,
+});
+
+transferSchema.index(
+  { deleted_at: 1 },
+  { sparse: true },
+);
+
+transferSchema.pre('validate', function keepDeletionDateInStep() {
+  if (this.is_deleted && !this.deleted_at) {
+    this.deleted_at = new Date();
+  }
+
+  if (!this.is_deleted && this.deleted_at) {
+    this.deleted_at = null;
+  }
 });
 
 transferSchema.pre('validate', function validateAccounts() {

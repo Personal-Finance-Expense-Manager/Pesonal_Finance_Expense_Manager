@@ -47,9 +47,17 @@ function latestAllowedDate() {
   return latest;
 }
 
+/**
+ * Validate a transaction request body.
+ *
+ * allowPartial  - edit mode (US-09): only the fields sent are checked.
+ * currentType   - edit mode: the type already stored. A partial body that does
+ *                 not repeat `type` is validated against it, so a bare
+ *                 { account_id } or { tags } is checked rather than ignored.
+ */
 export function validateTransactionInput(
   body,
-  { allowPartial = false } = {},
+  { allowPartial = false, currentType } = {},
 ) {
   const input =
     body && typeof body === 'object' && !Array.isArray(body)
@@ -115,7 +123,9 @@ export function validateTransactionInput(
     }
   }
 
-  if (data.type === 'transfer') {
+  const kind = data.type ?? currentType;
+
+  if (kind === 'transfer') {
     for (const key of ['from_account_id', 'to_account_id']) {
       if (required(key)) {
         if (!isObjectId(input[key])) {
@@ -139,7 +149,24 @@ export function validateTransactionInput(
       errors.account_id =
         'Transfers must use source and destination accounts.';
     }
-  } else if (data.type === 'income' || data.type === 'expense') {
+
+    if (allowPartial) {
+      for (const key of ['category_id', 'payment_mode', 'tags']) {
+        if (key in input) {
+          errors[key] = 'A transfer has no category, payment mode or tags.';
+        }
+      }
+    }
+  } else if (kind === 'income' || kind === 'expense') {
+    if (allowPartial) {
+      for (const key of ['from_account_id', 'to_account_id']) {
+        if (key in input) {
+          errors[key] =
+            'Only a transfer has source and destination accounts.';
+        }
+      }
+    }
+
     if (required('account_id')) {
       if (!isObjectId(input.account_id)) {
         errors.account_id = 'Select a valid account.';
@@ -196,7 +223,16 @@ export function validateTransactionInput(
           errors.tags =
             `Each tag must contain 1 to ${MAX_TAG_LENGTH} characters.`;
         } else {
-          data.tags = [...new Set(tags)];
+          // Tags are matched case-insensitively, so "Food" and "food" are one
+          // tag. Keep the first spelling; two links to the same tag would
+          // break the unique (transaction, tag) index and fail the request.
+          const seen = new Set();
+          data.tags = tags.filter((tag) => {
+            const key = tag.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
         }
       }
     }
