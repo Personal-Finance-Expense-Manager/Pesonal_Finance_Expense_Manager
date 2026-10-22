@@ -125,11 +125,11 @@ async function sumsByAccount(userId) {
       { $group: { _id: { account: '$account_id', type: '$type' }, total: { $sum: '$amount' } } },
     ]),
     Transfer.aggregate([
-      { $match: { user_id: user } },
+      { $match: { user_id: user, is_deleted: { $ne: true } } },
       { $group: { _id: '$from_account_id', total: { $sum: '$amount' } } },
     ]),
     Transfer.aggregate([
-      { $match: { user_id: user } },
+      { $match: { user_id: user, is_deleted: { $ne: true } } },
       { $group: { _id: '$to_account_id', total: { $sum: '$amount' } } },
     ]),
   ]);
