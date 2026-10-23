@@ -5,6 +5,7 @@ import AccountsPage from './AccountsPage.jsx';
 import BudgetsPage from './BudgetsPage.jsx';
 import TransactionsPage from './TransactionsPage.jsx';
 import CategoriesPage from './CategoriesPage.jsx';
+import TotalsPage from './TotalsPage.jsx';
 import DashboardPage from './DashboardPage.jsx';
 
 export default function Root() {
@@ -21,6 +22,7 @@ export default function Root() {
   if (hash === '#/budgets') return <BudgetsPage />;
   if (hash === '#/transactions') return <TransactionsPage />;
   if (hash === '#/categories') return <CategoriesPage />;
+  if (hash === '#/totals') return <TotalsPage />;
   if (hash === '#/dashboard') return <DashboardPage />;
 
   return <App />;

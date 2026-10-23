@@ -116,6 +116,9 @@ export default function TransactionsPage() {
   const [note, setNote] = useState('');
   const [tags, setTags] = useState('');
 
+  // REQ-41: tags this user has used before, for type-ahead suggestions (US-13).
+  const [knownTags, setKnownTags] = useState([]);
+
   const [message, setMessage] = useState('');
   const [listMessage, setListMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -135,6 +138,14 @@ export default function TransactionsPage() {
           apiRequest('accounts', id),
           apiRequest('categories', id),
         ]);
+
+        // Previously used tags (REQ-41). A failure here must not stop the page
+        // loading, so it is handled separately and ignored on error.
+        apiRequest('tags', id)
+          .then((tagResult) => {
+            if (!cancelled) setKnownTags(listFrom(tagResult, 'tags'));
+          })
+          .catch(() => {});
 
         if (cancelled) return;
 
@@ -253,6 +264,27 @@ export default function TransactionsPage() {
       setListMessage('');
       setMessage('');
     }
+  }
+
+  /**
+   * Append a suggested tag to the comma-separated list (REQ-41), unless it is
+   * already there or the five-tag limit has been reached (REQ-27).
+   */
+  function addTag(name) {
+    setTags((current) => {
+      const existing = current
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+
+      if (existing.some((tag) => tag.toLowerCase() === name.toLowerCase())) {
+        return current;
+      }
+
+      if (existing.length >= 5) return current;
+
+      return [...existing, name].join(', ');
+    });
   }
 
   function updateFilter(event) {
@@ -467,7 +499,13 @@ export default function TransactionsPage() {
             value={filters.tag}
             onChange={updateFilter}
             placeholder="e.g. food"
+            list="pfem-tag-suggestions"
           />
+          <datalist id="pfem-tag-suggestions">
+            {knownTags.map((tag) => (
+              <option key={tag.id} value={tag.name} />
+            ))}
+          </datalist>
         </label>
 
         <label style={labelStyle}>
@@ -798,6 +836,34 @@ export default function TransactionsPage() {
                 onChange={(event) => setTags(event.target.value)}
                 placeholder="food, travel"
               />
+              {/* REQ-41: suggest tags this user has used before. */}
+              {knownTags.length > 0 && (
+                <span style={{ display: 'block', marginTop: 8 }}>
+                  <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>
+                    Used before:
+                  </span>
+                  {knownTags.slice(0, 8).map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => addTag(tag.name)}
+                      style={{
+                        marginLeft: 6,
+                        marginTop: 6,
+                        padding: '3px 9px',
+                        borderRadius: 999,
+                        border: '1px solid #344054',
+                        background: 'transparent',
+                        color: '#cbd5e1',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                </span>
+              )}
             </label>
           </>
         )}
