@@ -16,15 +16,42 @@ const RESEND_WINDOW_MS = 60 * 60 * 1000;
 const MAX_VERIFICATION_ATTEMPTS = 3;
 const MAX_RESENDS_PER_HOUR = 3;
 
-function emailServiceConfigured() {
+function smtpConfigured() {
   return Boolean(
     process.env.SMTP_HOST &&
     process.env.SMTP_USER &&
     process.env.SMTP_PASS &&
-    process.env.EMAIL_FROM &&
+    process.env.EMAIL_FROM
+  );
+}
+
+/**
+ * TEMPORARY, local development only.
+ *
+ * A student machine has no SMTP server, so registration could not be completed
+ * or demonstrated at all. With DEV_EMAIL_CONSOLE=true in server/.env - and only
+ * outside production - the verification code is printed to the API console
+ * instead of being emailed. Everything else is unchanged: the code is still
+ * random, still hashed with EMAIL_VERIFICATION_SECRET, still expires in ten
+ * minutes and is still rate limited (REQ-4).
+ *
+ * Configure real SMTP credentials and remove the flag before any deployment.
+ */
+function devEmailFallback() {
+  return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.DEV_EMAIL_CONSOLE === 'true'
+  );
+}
+
+function emailServiceConfigured() {
+  // The verification secret is required either way: it hashes the code.
+  const secretOk = Boolean(
     process.env.EMAIL_VERIFICATION_SECRET &&
     process.env.EMAIL_VERIFICATION_SECRET.length >= 32
   );
+
+  return secretOk && (smtpConfigured() || devEmailFallback());
 }
 
 function getVerificationCodeHash(code) {
@@ -51,6 +78,16 @@ function generateVerificationCode() {
 }
 
 async function sendVerificationEmail(email, code) {
+  if (!smtpConfigured() && devEmailFallback()) {
+    console.log('');
+    console.log('  ------------------------------------------------------------');
+    console.log(`  [dev] Verification code for ${email}: ${code}`);
+    console.log('  [dev] No SMTP configured, so the code is printed here.');
+    console.log('  ------------------------------------------------------------');
+    console.log('');
+    return;
+  }
+
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
@@ -414,12 +451,12 @@ router.post('/resend-code', async (req, res) => {
 
 // US-04: Notify the account owner when sign-in attempts trigger a lockout.
 async function sendAccountLockoutEmail(email, lockedUntil) {
-  if (
-    !process.env.SMTP_HOST ||
-    !process.env.SMTP_USER ||
-    !process.env.SMTP_PASS ||
-    !process.env.EMAIL_FROM
-  ) {
+  if (!smtpConfigured() && devEmailFallback()) {
+    console.log(`  [dev] Account ${email} locked until ${lockedUntil.toISOString()}.`);
+    return;
+  }
+
+  if (!smtpConfigured()) {
     throw new Error('SMTP is not configured');
   }
 
