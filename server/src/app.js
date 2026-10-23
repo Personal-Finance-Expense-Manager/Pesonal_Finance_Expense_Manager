@@ -6,6 +6,7 @@ import accountRoutes from './routes/accounts.js';
 import budgetRoutes from './routes/budgets.js';
 import transactionRoutes from './routes/transactions.js';
 import categoryRoutes from './routes/categories.js';
+import tagRoutes from './routes/tags.js';
 import reportRoutes from './routes/reports.js';
 import { requireUser } from './middleware/currentUser.js';
 
@@ -17,6 +18,7 @@ import { requireUser } from './middleware/currentUser.js';
  *   /api/accounts     US-06, US-07   (#20, #21)
  *   /api/transactions US-08 .. US-10 (#24, #25, #26)
  *   /api/categories   US-12, US-13   (#30, #31)
+ *   /api/tags         US-13          (#31)
  *   /api/budgets      US-14          (#35)
  *   /api/reports      US-20          (#34)
  */
@@ -36,6 +38,7 @@ app.use('/api/accounts', requireUser, accountRoutes);
 app.use('/api/budgets', requireUser, budgetRoutes);
 app.use('/api/transactions', requireUser, transactionRoutes);
 app.use('/api/categories', requireUser, categoryRoutes);
+app.use('/api/tags', requireUser, tagRoutes);
 app.use('/api/reports', requireUser, reportRoutes);
 
 // Unknown route
