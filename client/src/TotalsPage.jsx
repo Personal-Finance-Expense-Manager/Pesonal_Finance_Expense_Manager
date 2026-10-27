@@ -259,7 +259,8 @@ export default function TotalsPage() {
                   {data.by_tag.map((t) => <Row key={t.id} item={t} barColour={colors.barTag} />)}
                   <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: colors.muted }}>
                     {data.untagged_transaction_count} transaction
-                    {data.untagged_transaction_count === 1 ? '' : 's'} in this period carry no tag.
+                    {data.untagged_transaction_count === 1 ? ' carries' : 's carry'} no tag in this
+                    period.
                     A transaction can have several tags, so tag totals may add up to more than the
                     period total.
                   </p>

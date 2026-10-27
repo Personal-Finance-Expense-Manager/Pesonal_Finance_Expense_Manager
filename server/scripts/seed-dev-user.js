@@ -26,12 +26,13 @@ import Transaction from '../src/models/Transaction.js';
 import Transfer from '../src/models/Transfer.js';
 import Budget from '../src/models/Budget.js';
 import Notification from '../src/models/Notification.js';
+import { createDefaultCategories } from '../src/services/categoryService.js';
 
 const DEMO_EMAIL = 'demo@pfem.local';
 
-// Demo expense categories so budgets (US-14) can be tried before the
-// categories story (US-12) is merged. Created for the demo user only.
-const DEMO_CATEGORIES = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment'];
+// The demo user gets the same default categories a real registration creates
+// (US-12, REQ-35), so the demo account behaves like a genuine one: income
+// categories exist, and the built-in categories are protected by REQ-39.
 
 if (process.env.NODE_ENV === 'production') {
   console.error('Refusing to create a demo user in production.');
@@ -76,15 +77,8 @@ try {
     console.log(`Fresh start: removed ${removed} demo records (accounts, transactions, budgets, ...).`);
   }
 
-  let added = 0;
-  for (const name of DEMO_CATEGORIES) {
-    const exists = await Category.findOne({ user_id: user._id, type: 'expense', name });
-    if (!exists) {
-      await Category.create({ user_id: user._id, type: 'expense', name });
-      added += 1;
-    }
-  }
-  if (added) console.log(`Added ${added} demo expense categories.`);
+  const added = await createDefaultCategories(user._id);
+  if (added) console.log(`Added ${added} default categories (REQ-35).`);
 
   console.log('');
   console.log(`  email:    ${DEMO_EMAIL}`);
