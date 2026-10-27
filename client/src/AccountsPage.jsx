@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { authHeaders, isSignedIn } from './auth.js';
 
 /**
  * Accounts and wallets page - US-06 (#20), SRS 5.2, REQ-13 to REQ-18.
@@ -229,7 +230,7 @@ export default function AccountsPage() {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Id': userId,
+        ...authHeaders(userId),
         ...(options.headers || {}),
       },
     });
@@ -245,7 +246,7 @@ export default function AccountsPage() {
   }, [userId]);
 
   const loadAccounts = useCallback(async () => {
-    if (!userId) return;
+    if (!userId && !isSignedIn()) return;
     try {
       const data = await api(`?includeArchived=${showArchived}`);
       setAccounts(data.accounts);
@@ -419,18 +420,21 @@ export default function AccountsPage() {
         </header>
 
         {/* Demo user - temporary until sign-in (US-04) is merged */}
-        <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
-          <label style={{ ...labelStyle, marginBottom: 8 }}>
-            Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
-            <input
-              style={inputStyle}
-              value={userIdDraft}
-              onChange={(e) => setUserIdDraft(e.target.value)}
-              placeholder="Paste the id printed by: npm run seed:dev"
-            />
-          </label>
-          <button type="submit" style={button('secondary')}>Use this user</button>
-        </form>
+        {/* Hidden once signed in: the session identifies the user (US-25). */}
+        {!isSignedIn() && (
+          <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
+            <label style={{ ...labelStyle, marginBottom: 8 }}>
+              Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
+              <input
+                style={inputStyle}
+                value={userIdDraft}
+                onChange={(e) => setUserIdDraft(e.target.value)}
+                placeholder="Paste the id printed by: npm run seed:dev"
+              />
+            </label>
+            <button type="submit" style={button('secondary')}>Use this user</button>
+          </form>
+        )}
 
         {message && (
           <p role="status" style={{ padding: 12, background: '#123524', color: '#bbf7d0', borderRadius: 8, fontSize: 14 }}>
@@ -443,7 +447,7 @@ export default function AccountsPage() {
           </p>
         )}
 
-        {userId && (
+        {(userId || isSignedIn()) && (
           <>
             {netWorth && <NetWorthCard netWorth={netWorth} />}
 

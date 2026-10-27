@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { authHeaders, isSignedIn } from './auth.js';
 
 /**
  * Dashboard - US-20 (#34), SRS 5.8: REQ-69.
@@ -81,10 +82,10 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!userId && !isSignedIn()) return;
     try {
       const response = await fetch(`${API_URL}/api/reports/dashboard`, {
-        headers: { 'X-User-Id': userId },
+        headers: { ...authHeaders(userId) },
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not load the dashboard.');
@@ -142,7 +143,7 @@ export default function DashboardPage() {
                   : 'Your money at a glance.'}
               </p>
             </div>
-            {userId && (
+            {(userId || isSignedIn()) && (
               <button
                 type="button"
                 onClick={load}
@@ -154,28 +155,28 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {!userId && (
-          <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
-            <label style={{ display: 'block', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-              Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
-              <input
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Paste the id printed by: npm run seed:dev"
-                style={{ width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '10px 12px', border: `1px solid ${colors.inputBorder}`, borderRadius: 9, background: colors.input, color: colors.text, fontSize: 15 }}
-              />
-            </label>
-            <button type="submit" style={{ padding: '9px 14px', borderRadius: 9, border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', fontWeight: 600, cursor: 'pointer' }}>
-              Use this user
-            </button>
-          </form>
+        {!userId && !isSignedIn() && (
+            <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
+              <label style={{ display: 'block', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+                Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
+                <input
+                  value={userIdDraft}
+                  onChange={(e) => setUserIdDraft(e.target.value)}
+                  placeholder="Paste the id printed by: npm run seed:dev"
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '10px 12px', border: `1px solid ${colors.inputBorder}`, borderRadius: 9, background: colors.input, color: colors.text, fontSize: 15 }}
+                />
+              </label>
+              <button type="submit" style={{ padding: '9px 14px', borderRadius: 9, border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', fontWeight: 600, cursor: 'pointer' }}>
+                Use this user
+              </button>
+            </form>
         )}
 
         {error && (
           <p role="alert" style={{ padding: 12, background: '#451a1a', color: '#fecaca', borderRadius: 8, fontSize: 14 }}>{error}</p>
         )}
 
-        {userId && !data && !error && <p style={{ color: colors.muted }}>Loading…</p>}
+        {(userId || isSignedIn()) && !data && !error && <p style={{ color: colors.muted }}>Loading…</p>}
 
         {data && (
           <>

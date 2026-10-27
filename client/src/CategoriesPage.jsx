@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { authHeaders, isSignedIn } from './auth.js';
 
 /**
  * Categories and subcategories page - US-12 (#30), SRS 5.4, REQ-35 to REQ-40.
@@ -257,7 +258,7 @@ export default function CategoriesPage() {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Id': userId,
+        ...authHeaders(userId),
         ...(options.headers || {}),
       },
     });
@@ -273,7 +274,7 @@ export default function CategoriesPage() {
   }, [userId]);
 
   const loadCategories = useCallback(async () => {
-    if (!userId) return;
+    if (!userId && !isSignedIn()) return;
     try {
       const data = await api('');
       setCategories(data.categories);
@@ -435,18 +436,21 @@ export default function CategoriesPage() {
         </header>
 
         {/* Demo user box - removed once sign-in is wired into feature pages */}
-        <form onSubmit={saveUserId} style={cardStyle}>
-          <label style={labelStyle}>
-            Demo user id
-            <input
-              style={inputStyle}
-              value={userIdDraft}
-              onChange={(e) => setUserIdDraft(e.target.value)}
-              placeholder="Run npm run seed:dev in server/ and paste the id"
-            />
-          </label>
-          <button type="submit" style={button('ghost', busy)} disabled={busy}>Use this user</button>
-        </form>
+        {/* Hidden once signed in: the session identifies the user (US-25). */}
+        {!isSignedIn() && (
+          <form onSubmit={saveUserId} style={cardStyle}>
+            <label style={labelStyle}>
+              Demo user id
+              <input
+                style={inputStyle}
+                value={userIdDraft}
+                onChange={(e) => setUserIdDraft(e.target.value)}
+                placeholder="Run npm run seed:dev in server/ and paste the id"
+              />
+            </label>
+            <button type="submit" style={button('ghost', busy)} disabled={busy}>Use this user</button>
+          </form>
+        )}
 
         {message && (
           <p style={{ ...cardStyle, borderColor: colors.green, color: colors.greenSoft, padding: 14 }}>{message}</p>
@@ -455,11 +459,11 @@ export default function CategoriesPage() {
           <p style={{ ...cardStyle, borderColor: '#7f1d1d', color: colors.red, padding: 14 }}>{error}</p>
         )}
 
-        {!userId && (
+        {!userId && !isSignedIn() && (
           <p style={{ color: colors.muted }}>Enter a demo user id above to load categories.</p>
         )}
 
-        {userId && (
+        {(userId || isSignedIn()) && (
           <>
             {/* Create (REQ-36, REQ-37, REQ-38) */}
             <form onSubmit={handleCreate} style={cardStyle}>

@@ -128,6 +128,16 @@ const userSchema = new mongoose.Schema(
       enum: ['active', 'suspended', 'closed'],
       default: 'active',
     },
+
+    // US-25 (#61), REQ-93: the server distinguishes the User and the
+    // Administrator role. The role is only ever read from this record, never
+    // from the request, so a client cannot claim to be an administrator.
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+      index: true,
+    },
   },
   {
     timestamps: true,
