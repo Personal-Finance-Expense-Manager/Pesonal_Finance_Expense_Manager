@@ -391,16 +391,19 @@ export default function TransactionsPage() {
         </a>
       </nav>
 
-      <label style={labelStyle}>
-        Development user ID
-        <input
-          style={fieldStyle}
-          value={userId}
-          onChange={handleUserIdChange}
-          placeholder="Enter development user ID"
-          required
-        />
-      </label>
+      {/* Hidden once signed in: the session identifies the user (US-25). */}
+      {!isSignedIn() && (
+        <label style={labelStyle}>
+          Development user ID
+          <input
+            style={fieldStyle}
+            value={userId}
+            onChange={handleUserIdChange}
+            placeholder="Enter development user ID"
+            required
+          />
+        </label>
+      )}
 
       <h2>Browse transactions</h2>
 
