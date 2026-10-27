@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { authHeaders, isSignedIn } from './auth.js';
 
 /**
  * Budgets page - US-14 (#35), SRS 5.5: REQ-43 to REQ-46, REQ-50, REQ-51.
@@ -197,7 +198,7 @@ export default function BudgetsPage() {
   const api = useCallback(async (path, options = {}) => {
     const response = await fetch(`${API_URL}/api/budgets${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(userId) },
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -210,7 +211,7 @@ export default function BudgetsPage() {
 
   // Load budgets (which also raises any alerts now due), categories and alerts.
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!userId && !isSignedIn()) return;
     try {
       const [list, cats, recent] = await Promise.all([
         api(showPast ? '?include=all' : ''),
@@ -297,18 +298,21 @@ export default function BudgetsPage() {
           </p>
         </header>
 
-        <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
-          <label style={{ ...labelStyle, marginBottom: 8 }}>
-            Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
-            <input
-              style={inputStyle}
-              value={userIdDraft}
-              onChange={(e) => setUserIdDraft(e.target.value)}
-              placeholder="Paste the id printed by: npm run seed:dev"
-            />
-          </label>
-          <button type="submit" style={secondaryButton}>Use this user</button>
-        </form>
+        {/* Hidden once signed in: the session identifies the user (US-25). */}
+        {!isSignedIn() && (
+          <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
+            <label style={{ ...labelStyle, marginBottom: 8 }}>
+              Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
+              <input
+                style={inputStyle}
+                value={userIdDraft}
+                onChange={(e) => setUserIdDraft(e.target.value)}
+                placeholder="Paste the id printed by: npm run seed:dev"
+              />
+            </label>
+            <button type="submit" style={secondaryButton}>Use this user</button>
+          </form>
+        )}
 
         {newAlerts.map((alert) => (
           <div
@@ -338,7 +342,7 @@ export default function BudgetsPage() {
           </p>
         )}
 
-        {userId && (
+        {(userId || isSignedIn()) && (
           <>
             <form onSubmit={handleCreate} style={cardStyle} noValidate>
               <h2 style={{ margin: '0 0 16px', fontSize: 18 }}>Create a budget</h2>

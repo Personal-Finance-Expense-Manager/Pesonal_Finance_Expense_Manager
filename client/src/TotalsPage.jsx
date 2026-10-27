@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { authHeaders, isSignedIn } from './auth.js';
 
 /**
  * Category-wise and tag-wise totals - US-13 (#31), SRS 5.4, REQ-42.
@@ -120,12 +121,12 @@ export default function TotalsPage() {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!userId && !isSignedIn()) return;
     setLoading(true);
     try {
       const response = await fetch(
         `${API_URL}/api/reports/totals?from=${from}&to=${to}&type=${type}`,
-        { headers: { 'X-User-Id': userId } }
+        { headers: { ...authHeaders(userId) } }
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not load totals.');
@@ -170,28 +171,31 @@ export default function TotalsPage() {
           </nav>
         </header>
 
-        <form onSubmit={saveUserId} style={cardStyle}>
-          <label style={labelStyle}>
-            Demo user id
-            <input
-              style={inputStyle}
-              value={userIdDraft}
-              onChange={(e) => setUserIdDraft(e.target.value)}
-              placeholder="Run npm run seed:dev in server/ and paste the id"
-            />
-          </label>
-          <button
-            type="submit"
-            style={{
-              marginTop: 12, padding: '9px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600,
-              border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', cursor: 'pointer',
-            }}
-          >
-            Use this user
-          </button>
-        </form>
+        {/* Hidden once signed in: the session identifies the user (US-25). */}
+        {!isSignedIn() && (
+          <form onSubmit={saveUserId} style={cardStyle}>
+            <label style={labelStyle}>
+              Demo user id
+              <input
+                style={inputStyle}
+                value={userIdDraft}
+                onChange={(e) => setUserIdDraft(e.target.value)}
+                placeholder="Run npm run seed:dev in server/ and paste the id"
+              />
+            </label>
+            <button
+              type="submit"
+              style={{
+                marginTop: 12, padding: '9px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600,
+                border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', cursor: 'pointer',
+              }}
+            >
+              Use this user
+            </button>
+          </form>
+        )}
 
-        {userId && (
+        {(userId || isSignedIn()) && (
           <div style={{ ...cardStyle, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
             <label style={labelStyle}>
               From
@@ -215,9 +219,9 @@ export default function TotalsPage() {
           <p style={{ ...cardStyle, borderColor: '#7f1d1d', color: colors.red, padding: 14 }}>{error}</p>
         )}
 
-        {!userId && <p style={{ color: colors.muted }}>Enter a demo user id above to see your totals.</p>}
+        {!userId && !isSignedIn() && <p style={{ color: colors.muted }}>Enter a demo user id above to see your totals.</p>}
 
-        {userId && loading && !data && <p style={{ color: colors.muted }}>Loading totals...</p>}
+        {(userId || isSignedIn()) && loading && !data && <p style={{ color: colors.muted }}>Loading totals...</p>}
 
         {data && (
           <>

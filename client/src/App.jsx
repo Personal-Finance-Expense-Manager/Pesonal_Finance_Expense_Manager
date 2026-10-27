@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './App.css';
+import { saveSession, clearSession } from './auth.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -194,6 +195,10 @@ export default function App() {
       setToken(result.token);
       setLoggedInUser(result.user);
       setLoginPassword('');
+
+      // US-25 (REQ-93): keep the session so every feature page can send it.
+      saveSession(result.token, result.user);
+
       setMessage('Sign-in successful.');
       setMode('account');
     } catch (requestError) {
@@ -213,6 +218,7 @@ export default function App() {
       setToken(null);
       setLoggedInUser(null);
       setLoginPassword('');
+      clearSession();
       setMessage('Signed out successfully.');
       setMode('login');
     } catch (requestError) {
@@ -665,6 +671,43 @@ export default function App() {
                 Welcome, {loggedInUser.name}.
               </p>
               <p>{loggedInUser.email}</p>
+
+              {/* US-25 (REQ-93): the session now authenticates every feature
+                  page, so the signed-in user can go straight to the app. */}
+              <nav
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                  gap: 8,
+                  margin: '18px 0',
+                }}
+              >
+                {[
+                  ['Dashboard', '#/dashboard'],
+                  ['Accounts', '#/accounts'],
+                  ['Transactions', '#/transactions'],
+                  ['Categories', '#/categories'],
+                  ['Totals', '#/totals'],
+                  ['Budgets', '#/budgets'],
+                ].map(([label, href]) => (
+                  <a
+                    key={href}
+                    href={href}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: 9,
+                      border: '1px solid #344054',
+                      color: '#e2e8f0',
+                      textDecoration: 'none',
+                      textAlign: 'center',
+                      fontSize: 14,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {label}
+                  </a>
+                ))}
+              </nav>
 
               <button
                 style={buttonStyle}

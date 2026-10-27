@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { authHeaders, isSignedIn } from './auth.js';
 
 const API = 'http://localhost:5000/api';
 const PAGE_SIZE = 25;
@@ -49,7 +50,7 @@ async function apiRequest(path, userId, options = {}) {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      'X-User-Id': userId.trim(),
+      ...authHeaders(userId),
       ...options.headers,
     },
   });
@@ -127,7 +128,7 @@ export default function TransactionsPage() {
   useEffect(() => {
     const id = userId.trim();
 
-    if (!id) return;
+    if (!id && !isSignedIn()) return;
 
     let cancelled = false;
     localStorage.setItem('pfem_dev_user_id', id);
@@ -198,7 +199,7 @@ export default function TransactionsPage() {
   useEffect(() => {
     const id = userId.trim();
 
-    if (!id) return;
+    if (!id && !isSignedIn()) return;
 
     const controller = new AbortController();
 
@@ -365,7 +366,7 @@ export default function TransactionsPage() {
     }
   }
 
-  const hasUserId = Boolean(userId.trim());
+  const hasUserId = Boolean(userId.trim()) || isSignedIn();
 
   return (
     <main
