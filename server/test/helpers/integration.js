@@ -120,12 +120,39 @@ export function apiAs(user) {
     return { status: response.status, body: json };
   }
 
+  /** Send a non-JSON body (e.g. a file) and keep the raw response bytes too. */
+  async function raw(method, path, { body, headers = {} } = {}) {
+    const all = { ...headers };
+    if (user) all['X-User-Id'] = user._id.toString();
+    const response = await fetch(`${baseUrl}${path}`, { method, headers: all, body });
+    return readRaw(response);
+  }
+
   return {
+    raw,
     get: (path) => request('GET', path),
     post: (path, body) => request('POST', path, body ?? {}),
     patch: (path, body) => request('PATCH', path, body ?? {}),
     delete: (path) => request('DELETE', path),
   };
+}
+
+async function readRaw(response) {
+  const buffer = Buffer.from(await response.arrayBuffer());
+  let json = null;
+  if ((response.headers.get('content-type') || '').includes('application/json')) {
+    try {
+      json = JSON.parse(buffer.toString('utf8'));
+    } catch {
+      json = null;
+    }
+  }
+  return { status: response.status, headers: response.headers, buffer, body: json };
+}
+
+/** Fetch an absolute URL with no sign-in at all (signed URLs, US-23). */
+export async function fetchUrl(url) {
+  return readRaw(await fetch(url));
 }
 
 /** Current balances (strings) by account id, read through the real accounts API. */
