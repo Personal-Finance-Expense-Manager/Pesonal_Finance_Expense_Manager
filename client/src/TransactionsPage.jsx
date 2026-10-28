@@ -308,7 +308,9 @@ export default function TransactionsPage() {
     event.preventDefault();
     setMessage('');
 
-    if (!userId.trim()) {
+    // A signed-in user is identified by the session token (US-25, REQ-93); the
+    // development id is only needed when there is no session.
+    if (!userId.trim() && !isSignedIn()) {
       setMessage('Enter your development user ID.');
       return;
     }
