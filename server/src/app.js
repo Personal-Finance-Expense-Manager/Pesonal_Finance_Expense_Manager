@@ -8,6 +8,11 @@ import transactionRoutes from './routes/transactions.js';
 import categoryRoutes from './routes/categories.js';
 import tagRoutes from './routes/tags.js';
 import reportRoutes from './routes/reports.js';
+import {
+  attachmentFileRoutes,
+  attachmentRoutes,
+  transactionAttachmentRoutes,
+} from './routes/attachments.js';
 import { requireUser } from './middleware/currentUser.js';
 
 /**
@@ -21,6 +26,7 @@ import { requireUser } from './middleware/currentUser.js';
  *   /api/tags         US-13          (#31)
  *   /api/budgets      US-14          (#35)
  *   /api/reports      US-20          (#34)
+ *   /api/attachments  US-23          (#57)
  */
 const app = express();
 
@@ -36,10 +42,15 @@ app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', requireUser, accountRoutes);
 app.use('/api/budgets', requireUser, budgetRoutes);
+app.use('/api/transactions/:id/attachments', requireUser, transactionAttachmentRoutes);
 app.use('/api/transactions', requireUser, transactionRoutes);
 app.use('/api/categories', requireUser, categoryRoutes);
 app.use('/api/tags', requireUser, tagRoutes);
 app.use('/api/reports', requireUser, reportRoutes);
+// The file itself is served through a short-lived signed URL, which an <img>
+// or download link can use without the Authorization header (REQ-81).
+app.use('/api/attachments', attachmentFileRoutes);
+app.use('/api/attachments', requireUser, attachmentRoutes);
 
 // Unknown route
 app.use((req, res) => {

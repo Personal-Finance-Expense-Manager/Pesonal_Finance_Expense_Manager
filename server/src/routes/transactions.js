@@ -19,6 +19,7 @@ import {
   restorableUntil,
   RETENTION_DAYS,
 } from '../services/recycleBinService.js';
+import { countAttachments } from '../services/attachmentService.js';
 import { sendApiError } from '../utils/apiError.js';
 
 const router = express.Router();
@@ -311,6 +312,9 @@ router.get('/', async (req, res, next) => {
           .lean()
       : [];
 
+    // US-23 (REQ-79): how many receipts each transaction on the page has.
+    const attachmentCounts = await countAttachments(userObjectId, transactionIds);
+
     const tagsByTransaction = new Map();
 
     for (const link of tagLinks) {
@@ -344,6 +348,7 @@ router.get('/', async (req, res, next) => {
           : null,
         category_name: item.category_id?.name || 'Uncategorized',
         tags: tagsByTransaction.get(String(item._id)) || [],
+        attachment_count: attachmentCounts.get(String(item._id)) || 0,
       })),
 
       pagination: {
