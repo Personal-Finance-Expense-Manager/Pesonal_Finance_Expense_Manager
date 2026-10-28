@@ -126,6 +126,28 @@ routes, signed URLs and records do not change.
 
 ---
 
+## 6. Import and export: decisions the SRS leaves open
+
+**Status:** accepted (US-24, #58)
+
+These are not departures from a stated requirement, but choices the SRS does
+not make, recorded so they can be explained at the demonstration.
+
+- **Accounts and categories are not created by an import.** A row naming an
+  account or category the user does not have is reported as invalid, with the
+  name. Creating them silently would let a typo add a new account.
+- **Transfers can be imported.** REQ-83 speaks of transactions; transfers are
+  included so that an exported file imports back completely.
+- **File size.** The CSV is sent inside a JSON request and the API accepts at
+  most 1 MB of JSON, so a file is limited to about 900 KB or 5,000 rows. PER-9's
+  1,000-row file is well inside this.
+- **Receipt files are not inside the JSON export (REQ-87).** The export lists
+  each attachment's name, type and size; the image and PDF files themselves are
+  downloaded from the transaction. Embedding them would make the file many
+  times larger and could not be opened in a text editor.
+
+---
+
 ## Summary for the demonstration
 
 | # | Deviation | Status |
@@ -135,6 +157,7 @@ routes, signed URLs and records do not change.
 | 3 | Transactions router merged unmounted | Fixed (PR #83) |
 | 4 | Test Plan results partial | In progress; blank where the feature does not exist |
 | 5 | Receipt files on the API server's disk, PDF thumbnail is a tile | Accepted; object store before deployment |
+| 6 | Import and export: open points decided (no auto-created accounts, file size, receipts not in JSON) | Accepted |
 
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as

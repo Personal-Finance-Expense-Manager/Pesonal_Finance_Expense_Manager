@@ -8,6 +8,7 @@ import transactionRoutes from './routes/transactions.js';
 import categoryRoutes from './routes/categories.js';
 import tagRoutes from './routes/tags.js';
 import reportRoutes from './routes/reports.js';
+import dataRoutes from './routes/data.js';
 import {
   attachmentFileRoutes,
   attachmentRoutes,
@@ -27,11 +28,16 @@ import { requireUser } from './middleware/currentUser.js';
  *   /api/budgets      US-14          (#35)
  *   /api/reports      US-20          (#34)
  *   /api/attachments  US-23          (#57)
+ *   /api/data         US-24          (#58)
  */
 const app = express();
 
 // Allow requests from the React client.
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*' }));
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN || '*',
+  // Lets the client read the file name of an export download (US-24).
+  exposedHeaders: ['Content-Disposition'],
+}));
 
 // Parse JSON and URL-encoded request bodies.
 app.use(express.json({ limit: '1mb' }));
@@ -47,6 +53,7 @@ app.use('/api/transactions', requireUser, transactionRoutes);
 app.use('/api/categories', requireUser, categoryRoutes);
 app.use('/api/tags', requireUser, tagRoutes);
 app.use('/api/reports', requireUser, reportRoutes);
+app.use('/api/data', requireUser, dataRoutes);
 // The file itself is served through a short-lived signed URL, which an <img>
 // or download link can use without the Authorization header (REQ-81).
 app.use('/api/attachments', attachmentFileRoutes);
