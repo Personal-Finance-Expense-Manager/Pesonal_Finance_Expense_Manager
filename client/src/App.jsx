@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import './App.css';
-import { saveSession, clearSession } from './auth.js';
+import { saveSession, clearSession, getToken, getUser, isSignedIn } from './auth.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -36,6 +36,13 @@ function getInitialScreen() {
     };
   }
 
+  // A stored session survives a reload and a trip to a feature page, so the
+  // signed-in screen - not the sign-up form - is what a signed-in user comes
+  // back to (US-25, REQ-93).
+  if (isSignedIn()) {
+    return { mode: 'account', email: '', token: '' };
+  }
+
   return { mode: 'register', email: '', token: '' };
 }
 
@@ -51,8 +58,10 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('');
 
   const [code, setCode] = useState('');
-  const [token, setToken] = useState(null);
-  const [loggedInUser, setLoggedInUser] = useState(null);
+  // Seeded from the stored session so navigating back to "#/" shows the
+  // signed-in screen instead of dropping the user at sign-in.
+  const [token, setToken] = useState(() => getToken() || null);
+  const [loggedInUser, setLoggedInUser] = useState(() => getUser());
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -74,6 +83,35 @@ export default function App() {
         );
       })
       .catch(() => setHealth('API connection unavailable'));
+  }, []);
+
+  // A stored session can have expired or been revoked while the tab was shut.
+  // Check it once on mount so a stale token shows sign-in rather than a
+  // signed-in screen whose pages then fail (US-25, REQ-93).
+  useEffect(() => {
+    const stored = getToken();
+
+    if (!stored) return;
+
+    let cancelled = false;
+
+    fetch(`${API_URL}/api/accounts`, {
+      headers: { Authorization: `Bearer ${stored}` },
+    })
+      .then((response) => {
+        if (cancelled || response.status !== 401) return;
+        clearSession();
+        setToken(null);
+        setLoggedInUser(null);
+        setMode('login');
+      })
+      .catch(() => {
+        // Offline or the API is down: keep the session and let the page say so.
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function clearFeedback() {
