@@ -1,5 +1,13 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import ReceiptAttachments from './ReceiptAttachments.jsx';
+import {
+  ATTACHMENT_ACCEPT,
+  ATTACHMENT_RULES,
+  MAX_ATTACHMENTS,
+  checkAttachment,
+  uploadAttachment,
+} from './receipts.js';
 
 const API = 'http://localhost:5000/api';
 const PAGE_SIZE = 25;
@@ -116,6 +124,11 @@ export default function TransactionsPage() {
   const [paymentMode, setPaymentMode] = useState('upi');
   const [note, setNote] = useState('');
   const [tags, setTags] = useState('');
+
+  // US-23: receipts chosen in the form, and the row whose receipts are open.
+  const [receiptFiles, setReceiptFiles] = useState([]);
+  const [receiptInputKey, setReceiptInputKey] = useState(0);
+  const [openReceipts, setOpenReceipts] = useState('');
 
   // REQ-41: tags this user has used before, for type-ahead suggestions (US-13).
   const [knownTags, setKnownTags] = useState([]);
@@ -304,6 +317,25 @@ export default function TransactionsPage() {
     setPage(1);
   }
 
+  // REQ-80: check receipts in the browser before anything is uploaded.
+  function chooseReceipts(event) {
+    const files = Array.from(event.target.files || []);
+    const problem =
+      files.length > MAX_ATTACHMENTS
+        ? `A transaction can have at most ${MAX_ATTACHMENTS} attachments.`
+        : files.map(checkAttachment).find(Boolean);
+
+    if (problem) {
+      setMessage(problem);
+      setReceiptFiles([]);
+      setReceiptInputKey((value) => value + 1);
+      return;
+    }
+
+    setMessage('');
+    setReceiptFiles(files);
+  }
+
   async function submit(event) {
     event.preventDefault();
     setMessage('');
@@ -350,15 +382,37 @@ export default function TransactionsPage() {
     setBusy(true);
 
     try {
-      await apiRequest('transactions', userId, {
+      const created = await apiRequest('transactions', userId, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
 
-      setMessage('Transaction created successfully.');
+      // US-23: upload any receipts to the new transaction.
+      let receiptNote = '';
+      const newId = created?.data?.id;
+
+      if (type !== 'transfer' && newId && receiptFiles.length) {
+        const failed = [];
+
+        for (const file of receiptFiles) {
+          try {
+            await uploadAttachment(newId, file, userId);
+          } catch (error) {
+            failed.push(`${file.name}: ${error.message}`);
+          }
+        }
+
+        receiptNote = failed.length
+          ? ` Some receipts were not attached - ${failed.join(' ')}`
+          : ` ${receiptFiles.length} receipt(s) attached.`;
+      }
+
+      setMessage(`Transaction created successfully.${receiptNote}`);
       setAmount('');
       setNote('');
       setTags('');
+      setReceiptFiles([]);
+      setReceiptInputKey((value) => value + 1);
       setPage(1);
       setRefresh((value) => value + 1);
     } catch (error) {
@@ -596,6 +650,7 @@ export default function TransactionsPage() {
                 'Type',
                 'Amount',
                 'Tags',
+                'Receipts',
               ].map((heading) => (
                 <th key={heading} style={{ padding: 10 }}>
                   {heading}
@@ -606,8 +661,8 @@ export default function TransactionsPage() {
 
           <tbody>
             {transactions.map((item) => (
+              <Fragment key={item.id}>
               <tr
-                key={item.id}
                 style={{ borderBottom: '1px solid #334155' }}
               >
                 <td style={{ padding: 10 }}>
@@ -646,7 +701,44 @@ export default function TransactionsPage() {
                 <td style={{ padding: 10 }}>
                   {(item.tags || []).join(', ') || '—'}
                 </td>
+
+                {/* US-23 (REQ-79): receipts are shown against the transaction. */}
+                <td style={{ padding: 10 }}>
+                  <button
+                    type="button"
+                    aria-expanded={openReceipts === item.id}
+                    aria-label={`Receipts for this transaction: ${item.attachment_count || 0}`}
+                    onClick={() =>
+                      setOpenReceipts((current) =>
+                        current === item.id ? '' : item.id,
+                      )
+                    }
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 999,
+                      border: '1px solid #475569',
+                      background: openReceipts === item.id ? '#14532d' : 'transparent',
+                      color: '#e2e8f0',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    📎 {item.attachment_count || 0}
+                  </button>
+                </td>
               </tr>
+
+              {openReceipts === item.id && (
+                <tr style={{ borderBottom: '1px solid #334155', background: '#0b1220' }}>
+                  <td colSpan={8}>
+                    <ReceiptAttachments
+                      transactionId={item.id}
+                      userId={userId}
+                      onChange={() => setRefresh((value) => value + 1)}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
 
             {hasUserId &&
@@ -654,7 +746,7 @@ export default function TransactionsPage() {
               !listMessage && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       padding: 16,
                       color: '#94a3b8',
@@ -872,6 +964,20 @@ export default function TransactionsPage() {
               )}
             </label>
           </>
+        )}
+
+        {type !== 'transfer' && (
+          <label style={labelStyle}>
+            Receipts (optional - {ATTACHMENT_RULES})
+            <input
+              key={receiptInputKey}
+              style={fieldStyle}
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              multiple
+              onChange={chooseReceipts}
+            />
+          </label>
         )}
 
         <label style={labelStyle}>

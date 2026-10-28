@@ -3,6 +3,7 @@ import Transfer from '../models/Transfer.js';
 import TransactionTag from '../models/TransactionTag.js';
 import Attachment from '../models/Attachment.js';
 import { recordAudit } from './auditService.js';
+import { deleteObject } from './storageService.js';
 
 /**
  * The recycle bin - US-09 (#25), SRS REQ-29, BR-12.
@@ -49,9 +50,9 @@ export async function listRecycleBin(userId, now = new Date()) {
  * Children are removed before the parent, so a crash part-way leaves the
  * parent still in the bin and the next run finishes the job.
  *
- * NOTE: this removes the Attachment records. There is no file-storage service
- * in the codebase yet, so the stored receipt file itself (object_key) cannot
- * be deleted here; that has to be added when attachment upload lands.
+ * Each attachment's stored receipt file is deleted too (US-23). The records go
+ * first and the files after, so a crash part-way leaves an unreferenced file
+ * rather than a record pointing at a file that has gone.
  */
 export async function purgeExpired(now = new Date()) {
   const expired = { is_deleted: true, deleted_at: { $lt: retentionCutoff(now) } };
@@ -67,9 +68,18 @@ export async function purgeExpired(now = new Date()) {
 
   if (transactionIds.length) {
     await TransactionTag.deleteMany({ transaction_id: { $in: transactionIds } });
+    const files = await Attachment.find({ transaction_id: { $in: transactionIds } })
+      .select('object_key')
+      .lean();
     const removed = await Attachment.deleteMany({ transaction_id: { $in: transactionIds } });
     attachments = removed.deletedCount;
     await Transaction.deleteMany({ _id: { $in: transactionIds }, ...expired });
+
+    for (const file of files) {
+      await deleteObject(file.object_key).catch((error) => {
+        console.error('[purge] could not delete stored file:', error.message);
+      });
+    }
   }
 
   if (transferIds.length) {
