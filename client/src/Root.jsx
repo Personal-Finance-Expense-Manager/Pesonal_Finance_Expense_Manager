@@ -7,6 +7,7 @@ import TransactionsPage from './TransactionsPage.jsx';
 import CategoriesPage from './CategoriesPage.jsx';
 import TotalsPage from './TotalsPage.jsx';
 import DashboardPage from './DashboardPage.jsx';
+import ImportExportPage from './ImportExportPage.jsx';
 
 export default function Root() {
   const [hash, setHash] = useState(window.location.hash);
@@ -24,6 +25,7 @@ export default function Root() {
   if (hash === '#/categories') return <CategoriesPage />;
   if (hash === '#/totals') return <TotalsPage />;
   if (hash === '#/dashboard') return <DashboardPage />;
+  if (hash === '#/data') return <ImportExportPage />;
 
   return <App />;
 }

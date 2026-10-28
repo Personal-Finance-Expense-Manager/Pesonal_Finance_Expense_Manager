@@ -727,6 +727,7 @@ export default function App() {
                   ['Categories', '#/categories'],
                   ['Totals', '#/totals'],
                   ['Budgets', '#/budgets'],
+                  ['Import & export', '#/data'],
                 ].map(([label, href]) => (
                   <a
                     key={href}
