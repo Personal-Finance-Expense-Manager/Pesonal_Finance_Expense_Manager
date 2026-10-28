@@ -195,6 +195,46 @@ its home page.
 
 ---
 
+## Import and export
+
+Open **Import & export** from the home screen (`#/data`). SRS 5.9, REQ-82 to REQ-87.
+
+**Transaction CSV (export and import).** UTF-8 with a byte-order mark so Excel
+opens it correctly, comma-separated, RFC 4180 quoting, one row per entry, in
+this column order:
+
+| # | Column | Contents |
+|---|---|---|
+| 1 | `date` | ISO 8601 calendar date, `YYYY-MM-DD` |
+| 2 | `type` | `income`, `expense` or `transfer` |
+| 3 | `amount` | plain decimal with two places, e.g. `1234.50` (no symbol, no separators) |
+| 4 | `currency` | ISO 4217 code of the account, e.g. `INR` |
+| 5 | `account` | account name (the source account of a transfer) |
+| 6 | `to_account` | destination account name, transfers only |
+| 7 | `category` | category name, blank if uncategorised |
+| 8 | `payment_mode` | `cash`, `card`, `upi`, `bank_transfer`, `wallet` or `other` |
+| 9 | `note` | free text |
+| 10 | `tags` | tag names separated by `;` |
+
+A text cell that starts with `=`, `+`, `-` or `@` is written with a leading
+apostrophe so a spreadsheet does not run it as a formula; the import removes it.
+
+**Import rules.** Any CSV can be imported: its columns are matched to the
+fields above by heading, and the user can change the match. Nothing is written
+until the user confirms the preview. Accounts and categories are matched by
+name and must already exist. Dates may be `YYYY-MM-DD` or `DD/MM/YYYY`; amounts
+may carry `₹`, `INR` or thousands separators. Without a type column every row is
+an expense. A row matching an existing entry on date, amount, account and note
+is a probable duplicate and is skipped unless ticked. A file can hold up to
+5,000 rows (about 900 KB).
+
+**All my data (JSON).** One file with the profile (no password or security
+fields), accounts, categories, tags, transactions, transfers, attachment
+names, budgets, goals, recurring rules, reminders and notifications. Amounts are
+decimal strings and dates ISO 8601.
+
+---
+
 ## Repository Layout
 
 ```text
