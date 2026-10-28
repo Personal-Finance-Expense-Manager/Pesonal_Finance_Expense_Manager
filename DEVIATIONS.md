@@ -5,7 +5,7 @@ submitted SRS, SADS and Test Plan to be documented and explained at the final
 demonstration. This file is that record.
 
 **Baseline documents:** SRS v1.1, SADS, Test Plan v1.0
-**Last updated:** 27 October 2026
+**Last updated:** 28 October 2026
 
 ---
 
@@ -100,6 +100,32 @@ more than a complete one that is not.
 
 ---
 
+## 5. Receipt files are stored on the API server's disk
+
+**Status:** accepted for the academic deliverable (US-23, #57)
+
+**Deviation from:** SRS DE-3 and the use-case actors, which name an external
+object store for receipt images.
+
+**What was done.** No team machine or free tier gives us an object store, so
+`services/storageService.js` writes each file to a directory on the API
+server (`UPLOAD_DIR`, default `server/uploads`, already in `.gitignore`) under
+a random 32-character name. That name is the `object_key` on the Attachment
+record, exactly as the data model describes. The file is never served
+directly: the owner asks for a URL and gets one signed with HMAC-SHA256 that
+expires after 5 minutes (REQ-81).
+
+**Also different.** A PDF receipt is shown as a "PDF" tile rather than a
+rendered first page. Rendering a PDF page needs a PDF library on the server or
+the client, which was out of proportion for a thumbnail. Images show a real
+preview.
+
+**Before any deployment.** Replace the three functions in `storageService.js`
+(`saveObject`, `objectPath`, `deleteObject`) with an object-store client; the
+routes, signed URLs and records do not change.
+
+---
+
 ## Summary for the demonstration
 
 | # | Deviation | Status |
@@ -108,6 +134,7 @@ more than a complete one that is not.
 | 2 | Email delivery stubbed in development | Accepted; real SMTP before deployment |
 | 3 | Transactions router merged unmounted | Fixed (PR #83) |
 | 4 | Test Plan results partial | In progress; blank where the feature does not exist |
+| 5 | Receipt files on the API server's disk, PDF thumbnail is a tile | Accepted; object store before deployment |
 
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as
