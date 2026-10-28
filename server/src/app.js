@@ -33,7 +33,11 @@ import { requireUser } from './middleware/currentUser.js';
 const app = express();
 
 // Allow requests from the React client.
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*' }));
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN || '*',
+  // Lets the client read the file name of an export download (US-24).
+  exposedHeaders: ['Content-Disposition'],
+}));
 
 // Parse JSON and URL-encoded request bodies.
 app.use(express.json({ limit: '1mb' }));
