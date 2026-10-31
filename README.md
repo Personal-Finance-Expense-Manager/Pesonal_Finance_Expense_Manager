@@ -189,6 +189,7 @@ its home page.
 |---|---|---|
 | `server/` | `npm run dev` | start the API with auto-reload |
 | `server/` | `npm start` | start the API once |
+| `server/` | `npm run bench` | performance benchmark against a throwaway database (see `PERFORMANCE.md`) |
 | `client/` | `npm run dev` | start the Vite dev server |
 | `client/` | `npm run build` | production build into `client/dist` |
 | `client/` | `npm run lint` | lint the client |

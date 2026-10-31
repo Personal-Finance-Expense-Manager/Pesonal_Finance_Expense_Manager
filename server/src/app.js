@@ -15,6 +15,7 @@ import {
   transactionAttachmentRoutes,
 } from './routes/attachments.js';
 import { requireUser } from './middleware/currentUser.js';
+import requestTiming from './middleware/requestTiming.js';
 
 /**
  * Express application for the Personal Finance & Expense Manager API.
@@ -32,11 +33,15 @@ import { requireUser } from './middleware/currentUser.js';
  */
 const app = express();
 
+// Time every request and log slow ones (US-27, PER-1, PER-5).
+app.use(requestTiming);
+
 // Allow requests from the React client.
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || '*',
-  // Lets the client read the file name of an export download (US-24).
-  exposedHeaders: ['Content-Disposition'],
+  // Lets the client read the file name of an export download (US-24) and
+  // the server time of each request (US-27).
+  exposedHeaders: ['Content-Disposition', 'Server-Timing'],
 }));
 
 // Parse JSON and URL-encoded request bodies.

@@ -5,7 +5,7 @@ submitted SRS, SADS and Test Plan to be documented and explained at the final
 demonstration. This file is that record.
 
 **Baseline documents:** SRS v1.1, SADS, Test Plan v1.0
-**Last updated:** 28 October 2026
+**Last updated:** 31 October 2026
 
 ---
 
@@ -148,6 +148,28 @@ not make, recorded so they can be explained at the demonstration.
 
 ---
 
+## 7. Performance targets that could not be shown
+
+**Status:** open (US-27, #14). Results in `PERFORMANCE.md`.
+
+- **PER-7 (200 concurrent users) is not demonstrated.** With 100 active
+  users every response stayed far inside its target. At 200 the only test
+  machine available (2 vCPUs running the API, the database and the load
+  generator together) ran out of CPU and response times reached about 2 s, with
+  no errors. `npm run bench` repeats the test on any machine; it should be run
+  against a real MongoDB with the load generator on separate hardware before
+  PER-7 is claimed.
+- **Measured on a MongoDB-compatible emulator.** No real MongoDB server could
+  be installed in the test environment, so the server times come from FerretDB
+  on PostgreSQL. They are expected to be slower than MongoDB, not faster.
+- **PER-8 cannot be measured yet.** The scheduler that generates recurring
+  entries and reminders belongs to US-16 and US-17, which are not merged.
+- **PER-11 does not apply as written.** There is no mobile app package, only
+  the web client (74 KB gzipped on first load), and the offline cache belongs to
+  US-11.
+
+---
+
 ## Summary for the demonstration
 
 | # | Deviation | Status |
@@ -158,6 +180,7 @@ not make, recorded so they can be explained at the demonstration.
 | 4 | Test Plan results partial | In progress; blank where the feature does not exist |
 | 5 | Receipt files on the API server's disk, PDF thumbnail is a tile | Accepted; object store before deployment |
 | 6 | Import and export: open points decided (no auto-created accounts, file size, receipts not in JSON) | Accepted |
+| 7 | PER-7 not shown at 200 users; PER-8 and PER-11 not measurable yet | Open; see PERFORMANCE.md |
 
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as
