@@ -15,6 +15,13 @@ const TOKEN_KEY = 'pfem_token';
 const USER_KEY = 'pfem_user';
 const DEV_USER_KEY = 'pfem_dev_user_id';
 
+/** Fired when the signed-in session starts or ends (US-05: the app lock follows it). */
+export const SESSION_CHANGED_EVENT = 'pfem:session-changed';
+
+function announceSessionChange() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
+}
+
 function read(key) {
   try {
     return localStorage.getItem(key) || '';
@@ -50,11 +57,13 @@ export function getUser() {
 export function saveSession(token, user) {
   write(TOKEN_KEY, token || '');
   write(USER_KEY, user ? JSON.stringify(user) : '');
+  announceSessionChange();
 }
 
 export function clearSession() {
   write(TOKEN_KEY, '');
   write(USER_KEY, '');
+  announceSessionChange();
 }
 
 export function isSignedIn() {

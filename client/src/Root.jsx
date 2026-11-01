@@ -1,6 +1,7 @@
 
 import { Suspense, lazy, useEffect, useState } from 'react';
 import App from './App.jsx';
+import AppLockGate from './AppLockGate.jsx';
 
 // US-27 (PER-2): each feature page is its own file. The home/sign-in screen
 // loads without the code of every other page, and the pages are fetched in
@@ -16,6 +17,7 @@ const loaders = {
   dashboard: () => import('./DashboardPage.jsx'),
   data: () => import('./ImportExportPage.jsx'),
   charts: () => import('./ChartsPage.jsx'),
+  security: () => import('./SecurityPage.jsx'),
 };
 
 const AccountsPage = lazy(loaders.accounts);
@@ -26,6 +28,7 @@ const TotalsPage = lazy(loaders.totals);
 const DashboardPage = lazy(loaders.dashboard);
 const ImportExportPage = lazy(loaders.data);
 const ChartsPage = lazy(loaders.charts);
+const SecurityPage = lazy(loaders.security);
 
 function prefetchPages() {
   const run = () => Object.values(loaders).forEach((load) => load().catch(() => {}));
@@ -53,10 +56,14 @@ export default function Root() {
 
   useEffect(prefetchPages, []);
 
+  // US-05 (REQ-11): while the app lock is engaged the gate shows the lock
+  // screen instead of any page, and the pages are not mounted at all.
   return (
-    <Suspense fallback={<Loading />}>
-      <Page hash={hash} />
-    </Suspense>
+    <AppLockGate>
+      <Suspense fallback={<Loading />}>
+        <Page hash={hash} />
+      </Suspense>
+    </AppLockGate>
   );
 }
 
@@ -69,6 +76,7 @@ function Page({ hash }) {
   if (hash === '#/dashboard') return <DashboardPage />;
   if (hash === '#/data') return <ImportExportPage />;
   if (hash === '#/charts') return <ChartsPage />;
+  if (hash === '#/security') return <SecurityPage />;
 
   return <App />;
 }

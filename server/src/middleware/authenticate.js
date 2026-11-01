@@ -75,6 +75,20 @@ export default async function authenticate(req, res, next) {
       });
     }
 
+    // US-05 (REQ-11, SEC-8): with the app lock on, a session may use the API
+    // only while it is unlocked. Routes a locked session must still reach
+    // (unlocking, the lock status, sign-out) set req.allowWhileLocked first.
+    if (
+      user.app_lock_enabled === true &&
+      !req.allowWhileLocked &&
+      !(session.app_unlocked_until && session.app_unlocked_until.getTime() > Date.now())
+    ) {
+      return res.status(423).json({
+        message: 'The app is locked. Unlock it to continue.',
+        code: 'APP_LOCKED',
+      });
+    }
+
     req.user = user;
     req.authSession = session;
 

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import healthRoutes from './routes/health.js';
 import authRoutes from './routes/auth.js';
+import appLockRoutes from './routes/appLock.js';
 import accountRoutes from './routes/accounts.js';
 import budgetRoutes from './routes/budgets.js';
 import transactionRoutes from './routes/transactions.js';
@@ -22,6 +23,7 @@ import requestTiming from './middleware/requestTiming.js';
  *
  * Feature routers:
  *   /api/auth         US-03, US-04   (#15, #16)
+ *   /api/app-lock     US-05          (#17)
  *   /api/accounts     US-06, US-07   (#20, #21)
  *   /api/transactions US-08 .. US-10 (#24, #25, #26)
  *   /api/categories   US-12, US-13   (#30, #31)
@@ -51,6 +53,9 @@ app.use(express.urlencoded({ extended: true }));
 // API routes
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
+// US-05: authenticates each route itself with a real session token, because
+// the lock state belongs to the session (the X-User-Id header has none).
+app.use('/api/app-lock', appLockRoutes);
 app.use('/api/accounts', requireUser, accountRoutes);
 app.use('/api/budgets', requireUser, budgetRoutes);
 app.use('/api/transactions/:id/attachments', requireUser, transactionAttachmentRoutes);
