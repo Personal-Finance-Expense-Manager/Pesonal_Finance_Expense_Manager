@@ -729,6 +729,7 @@ export default function App() {
                   ['Charts', '#/charts'],
                   ['Budgets', '#/budgets'],
                   ['Import & export', '#/data'],
+                  ['App lock', '#/security'],
                 ].map(([label, href]) => (
                   <a
                     key={href}

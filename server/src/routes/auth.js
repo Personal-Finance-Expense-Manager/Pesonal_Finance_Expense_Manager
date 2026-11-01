@@ -8,6 +8,7 @@ import User from '../models/User.js';
 import { createDefaultCategories } from '../services/categoryService.js';
 import Session from '../models/Session.js';
 import authenticate from '../middleware/authenticate.js';
+import { unlockDeadline } from '../services/appLockService.js';
 
 const router = Router();
 
@@ -450,7 +451,8 @@ router.post('/resend-code', async (req, res) => {
 });
 
 // US-04: Notify the account owner when sign-in attempts trigger a lockout.
-async function sendAccountLockoutEmail(email, lockedUntil) {
+// Exported so the US-05 PIN reset, which also checks the password, can use it.
+export async function sendAccountLockoutEmail(email, lockedUntil) {
   if (!smtpConfigured() && devEmailFallback()) {
     console.log(`  [dev] Account ${email} locked until ${lockedUntil.toISOString()}.`);
     return;
@@ -593,6 +595,9 @@ router.post('/login', async (req, res) => {
 
     user.failed_sign_in_attempts = 0;
     user.sign_in_locked_until = null;
+    // US-05: signing in with the password proves identity, so it also clears
+    // any run of wrong app-lock PINs.
+    user.app_lock_failed_attempts = 0;
     await user.save();
 
     // Every JWT gets a unique ID backed by a revocable database session.
@@ -614,6 +619,9 @@ router.post('/login', async (req, res) => {
       user_id: user._id,
       expires_at: expiresAt,
       revoked_at: null,
+      // US-05: a password sign-in starts unlocked; the PIN is asked for when
+      // the app has been in the background for two minutes (REQ-11).
+      app_unlocked_until: user.app_lock_enabled ? unlockDeadline() : null,
     });
 
     return res.status(200).json({
@@ -637,7 +645,12 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/logout
 // Revoke the current session on the server.
-router.post('/logout', authenticate, async (req, res) => {
+// US-05: allowed while the app is locked, so a user who forgot the PIN can
+// sign out and sign back in with the password.
+router.post('/logout', (req, res, next) => {
+  req.allowWhileLocked = true;
+  next();
+}, authenticate, async (req, res) => {
   try {
     req.authSession.revoked_at = new Date();
     await req.authSession.save();

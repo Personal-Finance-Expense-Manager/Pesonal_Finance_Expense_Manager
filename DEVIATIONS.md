@@ -170,6 +170,70 @@ not make, recorded so they can be explained at the demonstration.
 
 ---
 
+## 8. App lock (US-05): web client, WebAuthn biometric, server-enforced lock
+
+**Status:** implemented; deviations accepted for the web release
+
+**Deviates from:** SRS REQ-11, SEC-8, HI-2, Test Plan UT_64.
+
+**Web client, not a mobile client.** REQ-11, HI-2 and SEC-8 speak of the
+"mobile client" and "the background". PFEM is a React web application, so
+"background" is taken to mean the page is hidden (tab switched away, browser
+minimised, phone locked, tab closed). The lock engages after two minutes of
+that, exactly as REQ-11 says.
+
+**Biometric through WebAuthn.** A web page cannot read a fingerprint or a face,
+and must not. The supported mechanism is a WebAuthn *platform authenticator*
+(Touch ID, Windows Hello, Android biometrics): the device checks the person and
+signs a server challenge; the server stores only the public key and verifies the
+signature. Nothing is simulated. Two limits of the platform: (a) the browser
+cannot demand a fingerprint specifically, so with `userVerification: required`
+the device may accept its own screen-lock PIN or password instead; (b) it needs
+HTTPS, or `localhost` in development, and a device with something set up. Where
+it is unavailable the option is not shown and the PIN is used (HI-2's
+"falling back to a four-digit PIN").
+
+**The PIN is the base lock; biometric is added to it.** Biometric cannot be
+turned on without a PIN, and adding a device needs the PIN again. This follows
+HI-2 and means the lock never depends on a sensor that may be absent.
+
+**The server enforces the lock.** While the lock is on, every API route except
+the lock's own routes and sign-out answers `423 APP_LOCKED` unless the session
+was unlocked in the last two minutes (`sessions.app_unlocked_until`). The
+visible app sends a heartbeat every 30 seconds; a hidden or closed app sends
+none, so the session re-locks on the server by itself. The lock screen is a
+convenience over that, not the protection.
+
+**PIN storage and guessing.** Four digits are only 10,000 possibilities, so the
+PIN is stored as bcrypt (work factor 12, as REQ-6) of an HMAC keyed with
+`APP_LOCK_SECRET` (falls back to `JWT_SECRET`): a stolen copy of the database
+cannot be searched offline. Five consecutive wrong PINs revoke every session of
+the user, so the next step needs the account password and its own REQ-8
+lockout. Attempts are counted atomically *before* the comparison, so parallel
+guesses cannot exceed five. This five-attempt rule is not in the SRS; it is the
+minimum that makes a four-digit PIN defensible.
+
+**Additions the SRS does not list, needed to make an optional lock usable.**
+Change PIN, turn the lock off (both need the PIN), and "Forgot PIN?" (needs the
+account password, sharing the REQ-8 sign-in lockout). Without the last, a
+forgotten PIN would lock the user out for good. Turning the lock on, or
+changing or resetting the PIN, locks the user's other signed-in devices.
+
+**Known limits.**
+1. The interim `X-User-Id` development header (deviation 1) bypasses sessions
+   and therefore the lock. It is development-only (`DEV_AUTH_HEADER`, never in
+   production) and the app-lock routes ignore it. Removing it, as deviation 1
+   plans, closes this.
+2. A receipt link already issued (US-23, valid at most 15 minutes) is a signed
+   URL and keeps working for its short life after the lock engages.
+3. Changing `APP_LOCK_SECRET` (or `JWT_SECRET` when it is the fallback)
+   invalidates stored PINs; affected users use "Forgot PIN?".
+4. UT_64 needs a two-minute wait in a real browser; the automated tests move
+   the clock by editing the session instead. The Actual Result in the Test Plan
+   should come from a manual run.
+
+---
+
 ## Summary for the demonstration
 
 | # | Deviation | Status |
@@ -181,6 +245,7 @@ not make, recorded so they can be explained at the demonstration.
 | 5 | Receipt files on the API server's disk, PDF thumbnail is a tile | Accepted; object store before deployment |
 | 6 | Import and export: open points decided (no auto-created accounts, file size, receipts not in JSON) | Accepted |
 | 7 | PER-7 not shown at 200 users; PER-8 and PER-11 not measurable yet | Open; see PERFORMANCE.md |
+| 8 | App lock: web client, WebAuthn biometric, lock enforced by the server | Accepted for the web release |
 
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as

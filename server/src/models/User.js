@@ -1,6 +1,19 @@
 ﻿import mongoose from 'mongoose';
 import { hasAtMostTwoDecimalPlaces } from '../utils/money.js';
 
+// US-05: one enrolled device biometric (a WebAuthn credential).
+const appLockCredentialSchema = new mongoose.Schema(
+  {
+    credential_id: { type: String, required: true },
+    // Base64 SPKI DER public key used to verify unlock signatures.
+    public_key: { type: String, required: true },
+    sign_count: { type: Number, default: 0, min: 0 },
+    transports: { type: [String], default: [] },
+    created_at: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     // Basic user information
@@ -121,6 +134,29 @@ const userSchema = new mongoose.Schema(
     app_lock_enabled: {
       type: Boolean,
       default: false,
+    },
+
+    // US-05 (REQ-11): the four-digit app-lock PIN. Never the PIN itself: a
+    // bcrypt hash of an HMAC of the PIN (see services/appLockService.js).
+    app_lock_pin_hash: {
+      type: String,
+      select: false,
+    },
+
+    // US-05: consecutive wrong PINs. Incremented atomically BEFORE the PIN is
+    // compared, so parallel guesses cannot exceed the limit.
+    app_lock_failed_attempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // US-05 (HI-2): device biometric credentials (WebAuthn platform
+    // authenticators). Only the public key is stored - the fingerprint or face
+    // never leaves the device.
+    app_lock_credentials: {
+      type: [appLockCredentialSchema],
+      select: false,
     },
 
     status: {

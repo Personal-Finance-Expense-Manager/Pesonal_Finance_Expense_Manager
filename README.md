@@ -236,6 +236,35 @@ decimal strings and dates ISO 8601.
 
 ---
 
+## App lock
+
+Open **App lock** from the signed-in home screen (`#/security`). SRS 5.1,
+REQ-11, SEC-8, HI-2.
+
+- **Optional.** Off until you choose a four-digit PIN. You can change the PIN or
+  turn the lock off (both ask for the PIN) from the same page.
+- **Re-locks after two minutes in the background.** While the app is on screen it
+  tells the server every 30 seconds; hidden or closed, it stops, and the *server*
+  locks the session two minutes later. While locked, every API route except the
+  lock's own and sign-out answers `423`, so the lock cannot be bypassed by
+  editing the page.
+- **Fingerprint or face.** Where the browser and device offer it (HTTPS or
+  `localhost`, and a fingerprint, face or screen-lock set up), the device can
+  unlock instead of the PIN. This is WebAuthn: the server stores only a public
+  key. The PIN always works as the fallback.
+- **Wrong PINs.** Five in a row sign you out everywhere; sign in with your
+  password to continue. **Forgot PIN?** on the lock screen sets a new one with
+  your account password.
+
+Server settings (see `server/.env.example`): `APP_LOCK_SECRET` (falls back to
+`JWT_SECRET`), and `WEBAUTHN_ORIGIN` / `WEBAUTHN_RP_ID`, which default to
+`CLIENT_ORIGIN` and its host name. Endpoints: `/api/app-lock/` `status`,
+`heartbeat`, `lock`, `unlock`, `pin`, `pin/change`, `pin/reset`, `disable`,
+`biometric/register/options`, `biometric/register/verify`, `biometric/options`,
+`DELETE biometric`. Design notes and deviations: `DEVIATIONS.md` section 8.
+
+---
+
 ## Repository Layout
 
 ```text
