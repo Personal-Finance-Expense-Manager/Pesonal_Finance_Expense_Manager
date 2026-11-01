@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { dashboard } from '../services/dashboardService.js';
 import { totalsForPeriod } from '../services/totalsService.js';
+import { chartsForPeriod } from '../services/chartsService.js';
 import { monthlyPeriod, parseDateOnly, today } from '../utils/period.js';
 
 /**
@@ -11,8 +12,11 @@ import { monthlyPeriod, parseDateOnly, today } from '../utils/period.js';
  *                                spending categories and active budgets
  *   GET /api/reports/totals      category-wise and tag-wise totals for any
  *                                selected period (REQ-42)
+ *   GET /api/reports/charts      the category breakdown, the income-versus-
+ *                                expense trend and the largest spends for a
+ *                                selected period (REQ-70, REQ-71, REQ-72)
  *
- * Charts and period reports (REQ-70 to REQ-78) are US-21 and US-22 (Sprint 2).
+ * The remaining period reports (REQ-73 to REQ-78) are US-22.
  */
 const router = Router();
 
@@ -58,6 +62,45 @@ router.get('/totals', async (req, res, next) => {
     }
 
     res.json(await totalsForPeriod(req.user.id, { from: start, to: end, type }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/reports/charts?from=&to=&months=   (REQ-70, REQ-71, REQ-72)
+// ---------------------------------------------------------------------------
+router.get('/charts', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    // REQ-71 offers the last six or twelve months, and nothing else.
+    const months = req.query.months === undefined ? 6 : Number(req.query.months);
+
+    if (![6, 12].includes(months)) {
+      return res.status(400).json({ message: 'Months must be 6 or 12.' });
+    }
+
+    const period = monthlyPeriod(today());
+
+    let start = period.start;
+    let end = period.end;
+
+    if (from !== undefined) {
+      start = parseDateOnly(from);
+      if (!start) return res.status(400).json({ message: 'From must be a date such as 2026-10-01.' });
+    }
+
+    if (to !== undefined) {
+      end = parseDateOnly(to);
+      if (!end) return res.status(400).json({ message: 'To must be a date such as 2026-10-31.' });
+    }
+
+    if (start > end) {
+      return res.status(400).json({ message: 'The start date must be on or before the end date.' });
+    }
+
+    res.json(await chartsForPeriod(req.user.id, { from: start, to: end, months }));
   } catch (error) {
     next(error);
   }

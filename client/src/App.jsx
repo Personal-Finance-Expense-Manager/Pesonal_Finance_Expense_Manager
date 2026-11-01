@@ -726,6 +726,7 @@ export default function App() {
                   ['Transactions', '#/transactions'],
                   ['Categories', '#/categories'],
                   ['Totals', '#/totals'],
+                  ['Charts', '#/charts'],
                   ['Budgets', '#/budgets'],
                   ['Import & export', '#/data'],
                 ].map(([label, href]) => (
