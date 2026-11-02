@@ -17,6 +17,7 @@ const loaders = {
   dashboard: () => import('./DashboardPage.jsx'),
   data: () => import('./ImportExportPage.jsx'),
   charts: () => import('./ChartsPage.jsx'),
+  reports: () => import('./ReportsPage.jsx'),
   security: () => import('./SecurityPage.jsx'),
 };
 
@@ -28,6 +29,7 @@ const TotalsPage = lazy(loaders.totals);
 const DashboardPage = lazy(loaders.dashboard);
 const ImportExportPage = lazy(loaders.data);
 const ChartsPage = lazy(loaders.charts);
+const ReportsPage = lazy(loaders.reports);
 const SecurityPage = lazy(loaders.security);
 
 function prefetchPages() {
@@ -76,6 +78,7 @@ function Page({ hash }) {
   if (hash === '#/dashboard') return <DashboardPage />;
   if (hash === '#/data') return <ImportExportPage />;
   if (hash === '#/charts') return <ChartsPage />;
+  if (hash === '#/reports') return <ReportsPage />;
   if (hash === '#/security') return <SecurityPage />;
 
   return <App />;

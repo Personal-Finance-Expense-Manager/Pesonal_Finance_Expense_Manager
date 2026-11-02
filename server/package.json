@@ -8,10 +8,11 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/dashboard.test.js test/transaction-validation.test.js test/totals.test.js test/charts.test.js test/attachment-validation.test.js test/import-export.test.js test/request-timing.test.js test/app-lock.test.js test/webauthn.test.js test/app-lock-client.test.js",
+    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/dashboard.test.js test/transaction-validation.test.js test/totals.test.js test/charts.test.js test/report.test.js test/attachment-validation.test.js test/import-export.test.js test/request-timing.test.js test/app-lock.test.js test/webauthn.test.js test/app-lock-client.test.js",
     "test:integration": "node --test --test-concurrency=1 test/*.integration.test.js",
     "seed:dev": "node scripts/seed-dev-user.js",
     "dev:spend": "node scripts/dev-spend.js",
+    "bench:report": "node scripts/bench-report.js",
     "bench": "node scripts/benchmark.js"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.5",
     "nodemailer": "^10.1.7",
+    "pdfkit": "^0.20.2",
     "validator": "^13.15.35"
   },
   "devDependencies": {
