@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { dashboard } from '../services/dashboardService.js';
 import { totalsForPeriod } from '../services/totalsService.js';
 import { chartsForPeriod } from '../services/chartsService.js';
+import { reportForPeriod, reportToCsvRows } from '../services/reportService.js';
+import { reportToPdf } from '../services/reportPdfService.js';
+import { toCsv } from '../utils/csv.js';
 import { monthlyPeriod, parseDateOnly, today } from '../utils/period.js';
 
 /**
@@ -16,7 +19,11 @@ import { monthlyPeriod, parseDateOnly, today } from '../utils/period.js';
  *                                expense trend and the largest spends for a
  *                                selected period (REQ-70, REQ-71, REQ-72)
  *
- * The remaining period reports (REQ-73 to REQ-78) are US-22.
+ *   GET /api/reports/period      a report for any date range, optionally
+ *                                compared with a second range, with the pace
+ *                                of spending (REQ-73, REQ-75, REQ-76)
+ *   GET /api/reports/period.csv  the same report as CSV (REQ-77)
+ *   GET /api/reports/period.pdf  the same report as PDF (REQ-77)
  */
 const router = Router();
 
@@ -101,6 +108,130 @@ router.get('/charts', async (req, res, next) => {
     }
 
     res.json(await chartsForPeriod(req.user.id, { from: start, to: end, months }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Period reports - US-22 (#51): REQ-73 to REQ-78
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the range and the optional comparison range off the query.
+ *
+ * Returns either { error } with a message for the client, or the parsed
+ * values. Shared by the JSON, CSV and PDF routes so all three answer for
+ * exactly the same period - REQ-77 requires the exported figures to match
+ * what was displayed, and that starts with parsing the request identically.
+ */
+function readPeriod(query) {
+  const period = monthlyPeriod(today());
+
+  let from = period.start;
+  let to = period.end;
+
+  if (query.from !== undefined) {
+    from = parseDateOnly(query.from);
+    if (!from) return { error: 'From must be a date such as 2026-10-01.' };
+  }
+
+  if (query.to !== undefined) {
+    to = parseDateOnly(query.to);
+    if (!to) return { error: 'To must be a date such as 2026-10-31.' };
+  }
+
+  if (from > to) {
+    return { error: 'The start date must be on or before the end date.' };
+  }
+
+  // REQ-78 sets the performance target at twelve months. A longer range is
+  // refused rather than served slowly, so the limit is visible to the caller
+  // instead of appearing as a timeout.
+  const THIRTEEN_MONTHS_MS = 400 * 24 * 60 * 60 * 1000;
+
+  if (to.getTime() - from.getTime() > THIRTEEN_MONTHS_MS) {
+    return { error: 'A report can cover at most twelve months. Choose a shorter range.' };
+  }
+
+  let compare = null;
+
+  if (query.compare_from !== undefined || query.compare_to !== undefined) {
+    const compareFrom = parseDateOnly(query.compare_from);
+    const compareTo = parseDateOnly(query.compare_to);
+
+    if (!compareFrom || !compareTo) {
+      return { error: 'A comparison needs both compare_from and compare_to as dates.' };
+    }
+
+    if (compareFrom > compareTo) {
+      return { error: 'The comparison start date must be on or before its end date.' };
+    }
+
+    compare = { from: compareFrom, to: compareTo };
+  }
+
+  return { from, to, compare };
+}
+
+router.get('/period', async (req, res, next) => {
+  try {
+    const parsed = readPeriod(req.query);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+
+    res.json(await reportForPeriod(req.user.id, parsed));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---- REQ-77: the same report as a file --------------------------------
+
+function sendDownload(res, { body, type, fileName }) {
+  res.set({
+    'Content-Type': type,
+    'Content-Disposition': `attachment; filename="${fileName}"`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  return res.send(body);
+}
+
+function fileStamp(from, to) {
+  const iso = (d) => new Date(d).toISOString().slice(0, 10);
+  return `${iso(from)}_to_${iso(to)}`;
+}
+
+router.get('/period.csv', async (req, res, next) => {
+  try {
+    const parsed = readPeriod(req.query);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+
+    const report = await reportForPeriod(req.user.id, parsed);
+
+    sendDownload(res, {
+      body: toCsv(reportToCsvRows(report)),
+      type: 'text/csv; charset=utf-8',
+      fileName: `report_${fileStamp(report.from, report.to)}.csv`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/period.pdf', async (req, res, next) => {
+  try {
+    const parsed = readPeriod(req.query);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+
+    const report = await reportForPeriod(req.user.id, parsed);
+    const pdf = await reportToPdf(report, { userName: req.user.name || '' });
+
+    sendDownload(res, {
+      body: pdf,
+      type: 'application/pdf',
+      fileName: `report_${fileStamp(report.from, report.to)}.pdf`,
+    });
   } catch (error) {
     next(error);
   }

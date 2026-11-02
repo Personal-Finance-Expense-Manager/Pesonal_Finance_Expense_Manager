@@ -727,6 +727,7 @@ export default function App() {
                   ['Categories', '#/categories'],
                   ['Totals', '#/totals'],
                   ['Charts', '#/charts'],
+                  ['Reports', '#/reports'],
                   ['Budgets', '#/budgets'],
                   ['Import & export', '#/data'],
                   ['App lock', '#/security'],
