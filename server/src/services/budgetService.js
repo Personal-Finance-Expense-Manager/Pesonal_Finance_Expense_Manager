@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import mongoose from 'mongoose';
+import { amountForCategoriesStages } from './splitAttribution.js';
 import Budget from '../models/Budget.js';
 import Category from '../models/Category.js';
 import Transaction from '../models/Transaction.js';
@@ -49,13 +50,19 @@ export async function spentForBudget(budget) {
     transaction_date: { $gte: budget.period_start, $lte: budget.period_end },
   };
 
-  if (budget.category_id) {
-    match.category_id = { $in: await categoryWithChildren(budget.category_id.toString()) };
-  }
+  // A split bill counts against this budget only for the part attributed to
+  // its category, which is the point of splitting it (REQ-32, REQ-50). The
+  // categories are matched after the split expansion rather than in `match`,
+  // so a bill split half to Food still puts its Food half against a Food
+  // budget instead of being excluded or counted whole.
+  const categoryIds = budget.category_id
+    ? await categoryWithChildren(budget.category_id.toString())
+    : null;
 
   const [row] = await Transaction.aggregate([
     { $match: match },
-    { $group: { _id: null, total: { $sum: { $ifNull: ['$converted_amount', '$amount'] } } } },
+    ...amountForCategoriesStages(categoryIds),
+    { $group: { _id: null, total: { $sum: '$part_amount' } } },
   ]);
 
   return new Decimal(row ? row.total.toString() : '0');

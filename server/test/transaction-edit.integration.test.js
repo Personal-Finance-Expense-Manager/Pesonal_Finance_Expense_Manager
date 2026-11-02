@@ -99,6 +99,9 @@ test('a partial edit changes only the fields sent', async () => {
       id: undefined, type: 'expense', amount: '42.10', transaction_date: undefined,
       account_id: bank.id, category_id: category.id, payment_mode: 'upi',
       note: 'team lunch', tags: ['food'],
+      // US-11 (#27): an unsplit transaction carries an empty split list and
+      // is counted by budgets, and a partial edit must leave both alone.
+      splits: [], is_excluded_from_budget: false,
     },
   );
 });

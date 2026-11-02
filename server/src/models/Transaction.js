@@ -98,6 +98,31 @@ const transactionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /**
+     * A split bill - US-11 (#27), REQ-32.
+     *
+     * Empty for an ordinary transaction, which is attributed to category_id.
+     * When it holds rows, they carry the category attribution instead and must
+     * sum exactly to `amount`; category_id is then null, so there is never a
+     * second, disagreeing answer to "which category was this?".
+     */
+    splits: {
+      type: [
+        {
+          _id: false,
+          category_id: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Category',
+            default: null,
+          },
+          amount: {
+            type: mongoose.Schema.Types.Decimal128,
+            required: true,
+          },
+        },
+      ],
+      default: [],
+    },
     is_deleted: {
       type: Boolean,
       default: false,

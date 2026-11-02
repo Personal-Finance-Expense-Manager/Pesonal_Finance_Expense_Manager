@@ -1,5 +1,9 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import {
+  enqueue, flush, pendingCount, failedCount, pending, retry, clearFailed,
+  FLUSH_INTERVAL_MS,
+} from './offlineQueue.js';
 import ReceiptAttachments from './ReceiptAttachments.jsx';
 import {
   ATTACHMENT_ACCEPT,
@@ -124,6 +128,21 @@ export default function TransactionsPage() {
   const [paymentMode, setPaymentMode] = useState('upi');
   const [note, setNote] = useState('');
   const [tags, setTags] = useState('');
+
+  // US-11 (#27): a category on the form itself, a split bill (REQ-32), and
+  // keeping a reimbursable item out of budgets (REQ-33).
+  const [formCategoryId, setFormCategoryId] = useState('');
+  const [splitting, setSplitting] = useState(false);
+  const [splitRows, setSplitRows] = useState([
+    { category_id: '', amount: '' },
+    { category_id: '', amount: '' },
+  ]);
+  const [excludeFromBudget, setExcludeFromBudget] = useState(false);
+
+  // REQ-34: transactions typed while offline, and whether we are offline now.
+  const [offline, setOffline] = useState(() => !navigator.onLine);
+  const [queued, setQueued] = useState(() => pendingCount());
+  const [rejected, setRejected] = useState(() => failedCount());
 
   // US-23: receipts chosen in the form, and the row whose receipts are open.
   const [receiptFiles, setReceiptFiles] = useState([]);
@@ -336,6 +355,94 @@ export default function TransactionsPage() {
     setReceiptFiles(files);
   }
 
+  /**
+   * Post one transaction - REQ-34.
+   *
+   * Used both for a live save and for draining the offline queue, so a
+   * transaction that was queued goes to the server exactly as it would have
+   * done at the time it was typed.
+   */
+  const sendTransaction = useCallback(
+    async (payload) => {
+      const response = await fetch(`${API}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders(userId) },
+        body: JSON.stringify(payload),
+      });
+
+      const body = await response.json().catch(() => ({}));
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        message: body.message || '',
+        data: body.data,
+      };
+    },
+    [userId]
+  );
+
+  /** Drain the queue and report what happened - REQ-34. */
+  const drainQueue = useCallback(async () => {
+    if (pendingCount() === 0) return;
+
+    const result = await flush(sendTransaction);
+
+    setQueued(pendingCount());
+    setRejected(failedCount());
+
+    if (result.sent > 0) {
+      setMessage(
+        `${result.sent} transaction${result.sent === 1 ? '' : 's'} recorded offline ${result.sent === 1 ? 'has' : 'have'} been sent.`
+      );
+      setRefresh((value) => value + 1);
+    }
+  }, [sendTransaction]);
+
+  // REQ-34: send within sixty seconds of connectivity returning. The browser
+  // event covers the usual case; the timer covers a connection that comes
+  // back without one firing, which happens after sleep or a captive portal.
+  useEffect(() => {
+    function onOnline() {
+      setOffline(false);
+      drainQueue();
+    }
+
+    function onOffline() {
+      setOffline(true);
+    }
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+
+    const timer = window.setInterval(() => {
+      if (navigator.onLine) drainQueue();
+    }, FLUSH_INTERVAL_MS);
+
+    drainQueue();
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      window.clearInterval(timer);
+    };
+  }, [drainQueue]);
+
+  /** Clear the entry fields after a save, online or queued. */
+  function resetForm() {
+    setAmount('');
+    setNote('');
+    setTags('');
+    setReceiptFiles([]);
+    setReceiptInputKey((value) => value + 1);
+    setSplitting(false);
+    setSplitRows([
+      { category_id: '', amount: '' },
+      { category_id: '', amount: '' },
+    ]);
+    setExcludeFromBudget(false);
+  }
+
   async function submit(event) {
     event.preventDefault();
     setMessage('');
@@ -377,6 +484,55 @@ export default function TransactionsPage() {
         .split(',')
         .map((tag) => tag.trim())
         .filter(Boolean);
+
+      // REQ-33: keep a reimbursable or one-off item out of budgets.
+      payload.is_excluded_from_budget = excludeFromBudget;
+
+      // REQ-32: a split bill carries its own category attribution, so the
+      // single category is sent only when the bill is not split.
+      if (type === 'expense' && splitting) {
+        const rows = splitRows
+          .map((row) => ({ category_id: row.category_id, amount: row.amount.trim() }))
+          .filter((row) => row.category_id || row.amount);
+
+        if (rows.length < 2) {
+          setMessage('A split needs at least two categories.');
+          return;
+        }
+
+        if (rows.some((row) => !row.category_id)) {
+          setMessage('Choose a category for every split.');
+          return;
+        }
+
+        // Checked here as well as on the server so the mistake is caught
+        // before the request, and before it can be queued while offline.
+        const sum = rows.reduce((total, row) => total + Number(row.amount || 0), 0);
+
+        if (Math.abs(sum - Number(amount || 0)) > 0.004) {
+          setMessage(
+            `The split amounts add up to ${sum.toFixed(2)}, but the transaction is ${Number(amount || 0).toFixed(2)}.`
+          );
+          return;
+        }
+
+        payload.splits = rows;
+      } else if (formCategoryId) {
+        payload.category_id = formCategoryId;
+      }
+    }
+
+    // REQ-34: with no network the transaction is held rather than lost, and
+    // sent once connectivity returns. Receipts need the server, so a queued
+    // transaction keeps none - the deviation is recorded in DEVIATIONS.md.
+    if (!navigator.onLine) {
+      enqueue(payload);
+      setQueued(pendingCount());
+      setMessage(
+        'You are offline. This transaction has been saved on this device and will be sent when the connection returns.'
+      );
+      resetForm();
+      return;
     }
 
     setBusy(true);
@@ -408,11 +564,7 @@ export default function TransactionsPage() {
       }
 
       setMessage(`Transaction created successfully.${receiptNote}`);
-      setAmount('');
-      setNote('');
-      setTags('');
-      setReceiptFiles([]);
-      setReceiptInputKey((value) => value + 1);
+      resetForm();
       setPage(1);
       setRefresh((value) => value + 1);
     } catch (error) {
@@ -437,6 +589,81 @@ export default function TransactionsPage() {
       }}
     >
       <h1>Transactions</h1>
+
+      {/* REQ-34: offline state and anything waiting to be sent. */}
+      {(offline || queued > 0 || rejected > 0) && (
+        <div
+          style={{
+            margin: '0 0 18px',
+            padding: '12px 14px',
+            borderRadius: 10,
+            border: `1px solid ${offline ? '#7c5e10' : '#334155'}`,
+            background: offline ? '#1f1703' : '#0f172a',
+            fontSize: 14,
+          }}
+          role="status"
+        >
+          {offline && (
+            <div style={{ fontWeight: 600, marginBottom: queued || rejected ? 6 : 0 }}>
+              You are offline. Transactions are saved on this device and sent when the
+              connection returns.
+            </div>
+          )}
+
+          {queued > 0 && (
+            <div style={{ color: '#cbd5e1' }}>
+              {queued} transaction{queued === 1 ? '' : 's'} waiting to be sent.
+            </div>
+          )}
+
+          {rejected > 0 && (
+            <div style={{ color: '#fca5a5', marginTop: 6 }}>
+              {rejected} offline transaction{rejected === 1 ? ' was' : 's were'} refused by
+              the server and {rejected === 1 ? 'is' : 'are'} still saved here:
+              <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+                {pending()
+                  .filter((entry) => entry.status === 'failed')
+                  .map((entry) => (
+                    <li key={entry.id} style={{ marginBottom: 4 }}>
+                      {entry.body.amount} on{' '}
+                      {new Date(entry.queued_at).toLocaleString('en-GB')} - {entry.message}{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          retry(entry.id);
+                          setQueued(pendingCount());
+                          setRejected(failedCount());
+                        }}
+                        style={{
+                          marginLeft: 6, padding: '2px 8px', borderRadius: 6,
+                          border: '1px solid #334155', background: 'transparent',
+                          color: '#e2e8f0', cursor: 'pointer', fontSize: 12,
+                        }}
+                      >
+                        Try again
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => {
+                  clearFailed();
+                  setQueued(pendingCount());
+                  setRejected(failedCount());
+                }}
+                style={{
+                  marginTop: 8, padding: '4px 10px', borderRadius: 6,
+                  border: '1px solid #334155', background: 'transparent',
+                  color: '#94a3b8', cursor: 'pointer', fontSize: 12,
+                }}
+              >
+                Discard them
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <nav style={{ display: 'flex', gap: 16, marginBottom: 22 }}>
         <a href="#/accounts" style={{ color: '#86efac' }}>
@@ -910,6 +1137,152 @@ export default function TransactionsPage() {
 
         {type !== 'transfer' && (
           <>
+            {/* US-11 REQ-32: one category, or a split across up to five. */}
+            {!splitting && (
+              <label style={labelStyle}>
+                Category
+                <select
+                  style={fieldStyle}
+                  value={formCategoryId}
+                  onChange={(event) => setFormCategoryId(event.target.value)}
+                >
+                  <option value="">Uncategorised</option>
+                  {categories
+                    .filter((category) => (category.type || 'expense') === type)
+                    .map((category) => (
+                      <option key={optionId(category)} value={optionId(category)}>
+                        {category.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+
+            {type === 'expense' && (
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14, cursor: 'pointer' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={splitting}
+                  onChange={(event) => setSplitting(event.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                Split this bill across categories
+              </label>
+            )}
+
+            {type === 'expense' && splitting && (
+              <div
+                style={{
+                  padding: 14,
+                  border: '1px solid #334155',
+                  borderRadius: 10,
+                  background: '#0f172a',
+                }}
+              >
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
+                  The parts must add up to the transaction amount, across at most 5
+                  categories. REQ-32
+                </div>
+
+                {splitRows.map((row, index) => (
+                  <div
+                    key={index}
+                    style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}
+                  >
+                    <select
+                      style={{ ...fieldStyle, flex: 2, marginTop: 0 }}
+                      value={row.category_id}
+                      onChange={(event) => {
+                        const next = [...splitRows];
+                        next[index] = { ...next[index], category_id: event.target.value };
+                        setSplitRows(next);
+                      }}
+                    >
+                      <option value="">Choose a category</option>
+                      {categories
+                        .filter((category) => (category.type || 'expense') === 'expense')
+                        .map((category) => (
+                          <option key={optionId(category)} value={optionId(category)}>
+                            {category.name}
+                          </option>
+                        ))}
+                    </select>
+
+                    <input
+                      style={{ ...fieldStyle, flex: 1, marginTop: 0 }}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={row.amount}
+                      onChange={(event) => {
+                        const next = [...splitRows];
+                        next[index] = { ...next[index], amount: event.target.value };
+                        setSplitRows(next);
+                      }}
+                    />
+
+                    {splitRows.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => setSplitRows(splitRows.filter((_, i) => i !== index))}
+                        style={{
+                          padding: '6px 10px', borderRadius: 8, border: '1px solid #334155',
+                          background: 'transparent', color: '#94a3b8', cursor: 'pointer',
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10 }}>
+                  {splitRows.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setSplitRows([...splitRows, { category_id: '', amount: '' }])}
+                      style={{
+                        padding: '7px 12px', borderRadius: 8, border: '1px solid #334155',
+                        background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: 13,
+                      }}
+                    >
+                      Add a category
+                    </button>
+                  )}
+
+                  {(() => {
+                    const sum = splitRows.reduce((total, row) => total + Number(row.amount || 0), 0);
+                    const target = Number(amount || 0);
+                    const matches = Math.abs(sum - target) <= 0.004;
+
+                    return (
+                      <span style={{ fontSize: 13, color: matches ? '#4ade80' : '#f87171' }}>
+                        Split total {sum.toFixed(2)} of {target.toFixed(2)}
+                        {matches ? '' : ` — ${(target - sum).toFixed(2)} left to allocate`}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* REQ-33: a reimbursable item still counts in balances and
+                reports, but must not distort budget utilisation. */}
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 14, cursor: 'pointer' }}
+            >
+              <input
+                type="checkbox"
+                checked={excludeFromBudget}
+                onChange={(event) => setExcludeFromBudget(event.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              Exclude from budgets (reimbursable or one-off)
+            </label>
+
             <label style={labelStyle}>
               Payment mode
               <select

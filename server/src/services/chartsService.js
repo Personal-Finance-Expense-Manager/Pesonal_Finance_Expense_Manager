@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Category from '../models/Category.js';
 import Transaction from '../models/Transaction.js';
 import Account from '../models/Account.js';
+import { groupByCategoryStages } from './splitAttribution.js';
 
 /**
  * Spending charts - US-21 (#50), SRS 5.8: REQ-70, REQ-71, REQ-72.
@@ -116,7 +117,8 @@ async function categoryBreakdown(uid, from, to) {
         transaction_date: { $gte: from, $lte: to },
       },
     },
-    { $group: { _id: '$category_id', total: { $sum: amountField }, count: { $sum: 1 } } },
+    // Splits are attributed to their own categories (REQ-32).
+    ...groupByCategoryStages(),
   ]);
 
   const grandTotal = rows
