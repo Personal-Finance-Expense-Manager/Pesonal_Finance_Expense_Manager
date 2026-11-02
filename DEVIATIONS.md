@@ -232,6 +232,39 @@ changing or resetting the PIN, locks the user's other signed-in devices.
    the clock by editing the session instead. The Actual Result in the Test Plan
    should come from a manual run.
 
+## 9. Offline capture is in the web client, and a queued transaction carries no receipt
+
+**Requirement:** REQ-34 - "The system shall allow a transaction to be created on
+the **mobile client** while offline, shall mark it as pending synchronisation,
+and shall synchronise it to the server within 60 seconds of connectivity being
+restored."
+
+**What was built:** the behaviour REQ-34 describes, in the client that exists.
+This release is a web application; there is no mobile client, and one was never
+in the backlog. A transaction recorded with no network is held on the device,
+shown as pending, and sent when connectivity returns - by the browser's
+`online` event, and by a 15-second timer that covers a connection returning
+without the event firing, which happens after sleep or behind a captive portal.
+Both paths are well inside the sixty seconds the requirement allows.
+
+**Why:** building a mobile client to satisfy one requirement was never in
+scope for this project, and the requirement's intent - an entry made with no
+network is not lost - is met where users actually record transactions.
+
+**Consequences:**
+
+1. The queue is per browser and per device. A transaction typed offline on one
+   machine appears on another only once it has reached the server. That is the
+   correct scope: until it syncs, the entry exists only where it was typed.
+2. A transaction queued offline carries **no receipt**. Uploading a file needs
+   the server, so receipts can only be attached once the transaction exists.
+   Attach the receipt after it syncs.
+3. A queued transaction the server then refuses - a deleted account, a category
+   that no longer exists - is **kept and shown as failed**, not discarded. The
+   entry can be retried or discarded by hand. Nothing typed is silently lost.
+4. The queue lives in `localStorage`, so it survives the tab closing but not
+   clearing site data.
+
 ---
 
 ## Summary for the demonstration
@@ -246,6 +279,7 @@ changing or resetting the PIN, locks the user's other signed-in devices.
 | 6 | Import and export: open points decided (no auto-created accounts, file size, receipts not in JSON) | Accepted |
 | 7 | PER-7 not shown at 200 users; PER-8 and PER-11 not measurable yet | Open; see PERFORMANCE.md |
 | 8 | App lock: web client, WebAuthn biometric, lock enforced by the server | Accepted for the web release |
+| 9 | Offline capture in the web client; a queued transaction carries no receipt | Accepted for the web release |
 
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as

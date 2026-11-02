@@ -83,6 +83,11 @@ export function presentTransaction(transaction, tags = []) {
     transaction_date: transaction.transaction_date,
     account_id: transaction.account_id,
     category_id: transaction.category_id,
+    splits: (transaction.splits || []).map((split) => ({
+      category_id: split.category_id,
+      amount: split.amount.toString(),
+    })),
+    is_excluded_from_budget: Boolean(transaction.is_excluded_from_budget),
     payment_mode: transaction.payment_mode,
     note: transaction.note,
     tags,
@@ -180,7 +185,26 @@ async function editTransaction(userId, doc, data, ip) {
     doc.category_id = data.category_id;
   }
 
-  for (const key of ['type', 'transaction_date', 'payment_mode', 'note']) {
+  // REQ-32: replacing the splits replaces the whole set, and every category
+  // in it must be the caller's own - the same check the parent category gets.
+  if ('splits' in data) {
+    const ids = data.splits.map((split) => split.category_id).filter(Boolean);
+
+    if (ids.length) {
+      const owned = await Category.countDocuments({ _id: { $in: ids }, user_id: userId });
+      if (owned !== new Set(ids.map(String)).size) {
+        throw new ApiError(400, 'Select a valid category for every split.');
+      }
+    }
+
+    doc.splits = data.splits;
+
+    // The parts carry the attribution; a parent category as well would be a
+    // second, disagreeing answer to which category the money went to.
+    if (data.splits.length) doc.category_id = null;
+  }
+
+  for (const key of ['type', 'transaction_date', 'payment_mode', 'note', 'is_excluded_from_budget']) {
     if (key in data) doc[key] = data[key];
   }
 

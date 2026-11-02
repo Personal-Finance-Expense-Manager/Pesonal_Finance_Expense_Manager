@@ -2,6 +2,7 @@ import Decimal from 'decimal.js';
 import mongoose from 'mongoose';
 import Category from '../models/Category.js';
 import Transaction from '../models/Transaction.js';
+import { groupByCategoryStages } from './splitAttribution.js';
 
 /**
  * Period reports - US-22 (#51), SRS 5.8: REQ-73 to REQ-78.
@@ -105,7 +106,8 @@ async function expensesByCategory(uid, from, to) {
         transaction_date: { $gte: from, $lte: to },
       },
     },
-    { $group: { _id: '$category_id', total: { $sum: amountField }, count: { $sum: 1 } } },
+    // Splits are attributed to their own categories (REQ-32).
+    ...groupByCategoryStages(),
   ]);
 
   const byId = new Map();

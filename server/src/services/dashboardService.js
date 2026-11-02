@@ -6,6 +6,7 @@ import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 import { accountSummary } from './balanceService.js';
 import { spentForBudget, summarise } from './budgetService.js';
+import { groupByCategoryStages } from './splitAttribution.js';
 import { formatDateOnly, monthlyPeriod, today } from '../utils/period.js';
 
 /**
@@ -86,7 +87,8 @@ export async function dashboard(userId, baseCurrencyHint) {
     ]),
     Transaction.aggregate([
       { $match: { ...match, type: 'expense' } },
-      { $group: { _id: '$category_id', total: { $sum: amountField } } },
+      // Splits are attributed to their own categories (REQ-32).
+      ...groupByCategoryStages({ withCount: false }),
     ]),
     accountSummary(userId, baseCurrency),
     Budget.find({ user_id: userId, period_start: { $lte: onDay }, period_end: { $gte: onDay } }).lean(),

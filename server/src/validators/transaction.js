@@ -6,6 +6,7 @@ export const TRANSACTION_TYPES = ['income', 'expense', 'transfer'];
 export const MAX_NOTE_LENGTH = 200;
 export const MAX_TAGS = 5;
 export const MAX_TAG_LENGTH = 20;
+export const MAX_SPLITS = 5;
 
 const AMOUNT_ERROR =
   'Enter an amount greater than 0 with up to 2 decimal places.';
@@ -21,6 +22,8 @@ const ALLOWED_FIELDS = [
   'payment_mode',
   'note',
   'tags',
+  'is_excluded_from_budget',
+  'splits',
 ];
 
 const PAYMENT_MODES = [
@@ -34,6 +37,29 @@ const PAYMENT_MODES = [
 
 function isObjectId(value) {
   return typeof value === 'string' && /^[a-f\d]{24}$/i.test(value);
+}
+
+/**
+ * A money value as a two-decimal string, or null if it is not one.
+ *
+ * Shared by the transaction amount and by every split part (REQ-32), so a
+ * split is held to exactly the same rule as the total it must add up to.
+ */
+function parseAmount(raw) {
+  const value =
+    typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
+
+  if (!/^\d+(\.\d+)?$/.test(value)) return null;
+
+  const amount = new Decimal(value);
+
+  const valid =
+    amount.isFinite() &&
+    amount.greaterThan(0) &&
+    amount.decimalPlaces() <= 2 &&
+    amount.lessThanOrEqualTo('999999999999.99');
+
+  return valid ? amount.toFixed(2) : null;
 }
 
 function latestAllowedDate() {
@@ -84,27 +110,12 @@ export function validateTransactionInput(
   }
 
   if (required('amount')) {
-    const raw = input.amount;
-    const value =
-      typeof raw === 'string' || typeof raw === 'number'
-        ? String(raw).trim()
-        : '';
+    const amount = parseAmount(input.amount);
 
-    let valid = /^\d+(\.\d+)?$/.test(value);
-
-    if (valid) {
-      const amount = new Decimal(value);
-      valid =
-        amount.isFinite() &&
-        amount.greaterThan(0) &&
-        amount.decimalPlaces() <= 2 &&
-        amount.lessThanOrEqualTo('999999999999.99');
-    }
-
-    if (!valid) {
+    if (amount === null) {
       errors.amount = AMOUNT_ERROR;
     } else {
-      data.amount = new Decimal(value).toFixed(2);
+      data.amount = amount;
     }
   }
 
@@ -188,6 +199,95 @@ export function validateTransactionInput(
         errors.category_id = 'Select a valid category.';
       } else {
         data.category_id = categoryId;
+      }
+    }
+
+    // REQ-32: a split bill, across at most five categories, whose parts must
+    // sum to the transaction amount exactly. Checked against the amount in
+    // this same body, so a split can never be stored against a different
+    // total than the one it was validated for.
+    if (required('splits')) {
+      const splits = input.splits;
+
+      if (splits !== undefined && splits !== null && !Array.isArray(splits)) {
+        errors.splits = 'Splits must be a list.';
+      } else if (Array.isArray(splits) && splits.length > 0) {
+        if (kind !== 'expense') {
+          errors.splits = 'Only an expense can be split across categories.';
+        } else if (splits.length > MAX_SPLITS) {
+          errors.splits = `An expense can be split across at most ${MAX_SPLITS} categories.`;
+        } else if (splits.length < 2) {
+          errors.splits = 'A split needs at least two categories.';
+        } else {
+          const parts = [];
+          let bad = null;
+
+          for (const split of splits) {
+            if (!split || typeof split !== 'object') {
+              bad = 'Each split needs a category and an amount.';
+              break;
+            }
+
+            const categoryId = split.category_id;
+
+            if (
+              categoryId !== null &&
+              categoryId !== undefined &&
+              categoryId !== '' &&
+              !isObjectId(categoryId)
+            ) {
+              bad = 'Select a valid category for every split.';
+              break;
+            }
+
+            const partAmount = parseAmount(split.amount);
+
+            if (!partAmount) {
+              bad = 'Enter an amount greater than 0 with up to 2 decimal places for every split.';
+              break;
+            }
+
+            parts.push({
+              category_id: categoryId === '' || categoryId === undefined ? null : categoryId,
+              amount: partAmount,
+            });
+          }
+
+          if (bad) {
+            errors.splits = bad;
+          } else if (data.amount === undefined) {
+            // An edit that changes the splits must send the amount too, so the
+            // two can be checked against each other rather than against a
+            // total that may be about to change.
+            errors.splits = 'Send the transaction amount with its splits.';
+          } else {
+            const sum = parts.reduce((acc, part) => acc.plus(new Decimal(part.amount)), new Decimal(0));
+
+            if (!sum.equals(new Decimal(data.amount))) {
+              errors.splits =
+                `The split amounts add up to ${sum.toFixed(2)}, but the transaction is ${new Decimal(data.amount).toFixed(2)}.`;
+            } else {
+              data.splits = parts;
+              // The parts carry the category attribution; keeping a parent
+              // category as well would be a second, disagreeing answer.
+              data.category_id = null;
+            }
+          }
+        }
+      } else if (splits !== undefined) {
+        data.splits = [];
+      }
+    }
+
+    // REQ-33: a reimbursable or one-off item can be kept out of budgets while
+    // still counting towards balances and reports.
+    if (required('is_excluded_from_budget')) {
+      const flag = input.is_excluded_from_budget;
+
+      if (flag !== undefined && typeof flag !== 'boolean') {
+        errors.is_excluded_from_budget = 'Excluded from budgets must be true or false.';
+      } else if (flag !== undefined) {
+        data.is_excluded_from_budget = flag;
       }
     }
 

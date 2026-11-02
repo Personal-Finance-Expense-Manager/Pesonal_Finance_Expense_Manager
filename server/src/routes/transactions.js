@@ -279,6 +279,7 @@ router.get('/', async (req, res, next) => {
         .limit(limit)
         .populate('account_id', 'name currency')
         .populate('category_id', 'name')
+        .populate('splits.category_id', 'name')
         .lean(),
 
       Transaction.countDocuments(query),
@@ -346,7 +347,19 @@ router.get('/', async (req, res, next) => {
         category_id: item.category_id?._id
           ? String(item.category_id._id)
           : null,
-        category_name: item.category_id?.name || 'Uncategorized',
+        // US-11 REQ-32: a split bill is not uncategorised - it is spread over
+        // several categories, and the list says which.
+        category_name: item.splits?.length
+          ? `Split: ${item.splits
+              .map((split) => split.category_id?.name || 'Uncategorised')
+              .join(', ')}`
+          : item.category_id?.name || 'Uncategorized',
+        splits: (item.splits || []).map((split) => ({
+          category_id: split.category_id?._id ? String(split.category_id._id) : null,
+          category_name: split.category_id?.name || 'Uncategorised',
+          amount: split.amount.toString(),
+        })),
+        is_excluded_from_budget: Boolean(item.is_excluded_from_budget),
         tags: tagsByTransaction.get(String(item._id)) || [],
         attachment_count: attachmentCounts.get(String(item._id)) || 0,
       })),
@@ -420,10 +433,30 @@ router.post('/', async (req, res, next) => {
       }
     }
 
+    // REQ-32: every split category must be the caller's own, exactly as the
+    // parent category is checked above.
+    if (data.splits && data.splits.length) {
+      const Category = mongoose.model('Category');
+      const ids = data.splits.map((split) => split.category_id).filter(Boolean);
+
+      const owned = await Category.countDocuments({
+        _id: { $in: ids },
+        user_id: userId,
+      });
+
+      if (owned !== new Set(ids.map(String)).size) {
+        return res.status(400).json({
+          message: 'Select a valid category for every split.',
+        });
+      }
+    }
+
     const transaction = await Transaction.create({
       user_id: userId,
       account_id: data.account_id,
       category_id: data.category_id,
+      splits: data.splits || [],
+      is_excluded_from_budget: data.is_excluded_from_budget === true,
       type: data.type,
       amount: data.amount,
       currency: account.currency || 'INR',
@@ -463,6 +496,11 @@ router.post('/', async (req, res, next) => {
         transaction_date: transaction.transaction_date,
         account_id: transaction.account_id,
         category_id: transaction.category_id,
+        splits: transaction.splits.map((split) => ({
+          category_id: split.category_id,
+          amount: split.amount.toString(),
+        })),
+        is_excluded_from_budget: transaction.is_excluded_from_budget,
         payment_mode: transaction.payment_mode,
         note: transaction.note,
         tags: data.tags,

@@ -4,6 +4,7 @@ import Category from '../models/Category.js';
 import Tag from '../models/Tag.js';
 import Transaction from '../models/Transaction.js';
 import TransactionTag from '../models/TransactionTag.js';
+import { groupByCategoryStages } from './splitAttribution.js';
 
 /**
  * Category-wise and tag-wise totals - US-13 (#31), SRS 5.4: REQ-42.
@@ -73,7 +74,8 @@ export async function totalsForPeriod(userId, { from, to, type = 'expense' }) {
   // ---- by category ------------------------------------------------------
   const categoryRows = await Transaction.aggregate([
     { $match: match },
-    { $group: { _id: '$category_id', total: { $sum: amountField }, count: { $sum: 1 } } },
+    // Splits are attributed to their own categories (REQ-32).
+    ...groupByCategoryStages(),
   ]);
 
   const grandTotal = categoryRows
