@@ -44,8 +44,16 @@ const budgetSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+
+  // US-15: identifies the previous budget that generated this budget.
+  // Used to prevent duplicate rollover/repeat generation.
+  generated_from_budget_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Budget',
+    default: null,
+  },
+
   // REQ-46 / BR-6: each alert is raised only once per budget per period.
-  // A budget covers exactly one period, so "sent" is recorded on the budget.
   warning_alert_sent_at: {
     type: Date,
     default: null,
@@ -70,6 +78,17 @@ budgetSchema.index({
   period_start: 1,
   period_end: 1,
 });
+
+// US-15: one generated next-period budget per source budget.
+budgetSchema.index(
+  { generated_from_budget_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      generated_from_budget_id: { $type: 'objectId' },
+    },
+  },
+);
 
 budgetSchema.pre('validate', function validatePeriod() {
   if (
