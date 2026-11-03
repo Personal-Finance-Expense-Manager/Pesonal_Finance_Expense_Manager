@@ -1,3 +1,4 @@
+
 import Decimal from 'decimal.js';
 import mongoose from 'mongoose';
 import { amountForCategoriesStages } from './splitAttribution.js';
@@ -8,13 +9,12 @@ import { daysLeft, formatDateOnly } from '../utils/period.js';
 
 /**
  * Budget utilisation (US-14, #35): REQ-44, REQ-45, REQ-50, REQ-51.
+ * US-15 (#36): REQ-47, REQ-48, REQ-49.
  *
- * Utilisation is calculated from the transactions every time it is asked
- * for, never cached. That is how REQ-51 ("refresh within five seconds of a
- * transaction change") is met: the next read already reflects the change.
+ * Utilisation is calculated from transactions every time it is requested.
  */
 
-/** Find a budget for the same user and category whose period overlaps (REQ-44). */
+/** Find an overlapping budget for the same user and category. */
 export function findOverlappingBudget(userId, categoryId, period) {
   return Budget.findOne({
     user_id: userId,
@@ -26,20 +26,19 @@ export function findOverlappingBudget(userId, categoryId, period) {
 
 /** The category id plus the ids of its sub-categories. */
 async function categoryWithChildren(categoryId) {
-  const children = await Category.find({ parent_category_id: categoryId }).select('_id').lean();
-  return [new mongoose.Types.ObjectId(categoryId), ...children.map((c) => c._id)];
+  const children = await Category.find({
+    parent_category_id: categoryId,
+  }).select('_id').lean();
+
+  return [
+    new mongoose.Types.ObjectId(categoryId),
+    ...children.map((c) => c._id),
+  ];
 }
 
 /**
  * Total spent against a budget.
- *
- * Counts expenses in the period for the budget's category (or every category
- * for an overall budget). Leaves out (REQ-50):
- *   - transactions marked "excluded from budgets"
- *   - transfers between the user's own accounts, which are stored in the
- *     Transfer collection and so are never expenses here
- *   - deleted transactions
- * Uses the amount converted to the base currency when there is one.
+ * Excludes deleted transactions, excluded transactions and transfers.
  */
 export async function spentForBudget(budget) {
   const match = {
@@ -47,14 +46,12 @@ export async function spentForBudget(budget) {
     type: 'expense',
     is_deleted: { $ne: true },
     is_excluded_from_budget: { $ne: true },
-    transaction_date: { $gte: budget.period_start, $lte: budget.period_end },
+    transaction_date: {
+      $gte: budget.period_start,
+      $lte: budget.period_end,
+    },
   };
 
-  // A split bill counts against this budget only for the part attributed to
-  // its category, which is the point of splitting it (REQ-32, REQ-50). The
-  // categories are matched after the split expansion rather than in `match`,
-  // so a bill split half to Food still puts its Food half against a Food
-  // budget instead of being excluded or counted whole.
   const categoryIds = budget.category_id
     ? await categoryWithChildren(budget.category_id.toString())
     : null;
@@ -69,14 +66,16 @@ export async function spentForBudget(budget) {
 }
 
 /**
- * Turn a budget plus its spent amount into the figures REQ-45 asks for.
- * Pure function; unit tested.
+ * Turn a budget plus its spent amount into utilisation figures.
  */
 export function summarise(amount, spent, period, onDay) {
   const budgeted = new Decimal(amount.toString());
   const used = new Decimal(spent.toString());
   const remaining = budgeted.minus(used);
-  const percent = budgeted.isZero() ? new Decimal(0) : used.dividedBy(budgeted).times(100);
+
+  const percent = budgeted.isZero()
+    ? new Decimal(0)
+    : used.dividedBy(budgeted).times(100);
 
   return {
     budgeted: budgeted.toFixed(2),
@@ -86,7 +85,9 @@ export function summarise(amount, spent, period, onDay) {
     days_left: daysLeft(period, onDay),
     status: percent.greaterThanOrEqualTo(100)
       ? 'over'
-      : percent.greaterThanOrEqualTo(80) ? 'warning' : 'ok',
+      : percent.greaterThanOrEqualTo(80)
+        ? 'warning'
+        : 'ok',
   };
 }
 
@@ -94,11 +95,20 @@ export function summarise(amount, spent, period, onDay) {
 export function present(budget, category, utilisation, onDay) {
   return {
     id: budget._id.toString(),
-    category_id: budget.category_id ? budget.category_id.toString() : null,
-    category_name: budget.category_id ? (category?.name ?? 'Deleted category') : 'Overall spending',
+    category_id: budget.category_id
+      ? budget.category_id.toString()
+      : null,
+    category_name: budget.category_id
+      ? (category?.name ?? 'Deleted category')
+      : 'Overall spending',
     period_type: budget.period_type,
     period_start: formatDateOnly(budget.period_start),
     period_end: formatDateOnly(budget.period_end),
+
+    // US-15: expose budget automation settings to the frontend.
+    rollover_enabled: budget.rollover_enabled ?? false,
+    repeat_enabled: budget.repeat_enabled ?? false,
+
     is_active: budget.period_end.getTime() >= onDay.getTime(),
     ...utilisation,
   };
