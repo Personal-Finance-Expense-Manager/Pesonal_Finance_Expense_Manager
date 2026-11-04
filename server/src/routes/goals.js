@@ -9,6 +9,7 @@ import {
   getGoal,
   updateGoal,
   contributeToGoal,
+  withdrawFromGoal,
   deleteGoal,
 } from '../services/goalService.js';
 
@@ -37,7 +38,11 @@ router.post('/', async (req, res, next) => {
     }
 
     const goal = await createGoal(req.user.id, data);
-    return res.status(201).json({ message: 'Savings goal created.', goal });
+
+    return res.status(201).json({
+      message: 'Savings goal created.',
+      goal,
+    });
   } catch (error) {
     return next(error);
   }
@@ -62,13 +67,17 @@ router.patch('/:id', async (req, res, next) => {
     });
 
     if (!current) {
-      return res.status(404).json({ message: 'Savings goal not found.' });
+      return res.status(404).json({
+        message: 'Savings goal not found.',
+      });
     }
 
     const merged = {
       name: req.body.name ?? current.name,
-      target_amount: req.body.target_amount ?? current.target_amount.toString(),
-      target_date: req.body.target_date ?? current.target_date?.toISOString().slice(0, 10),
+      target_amount: req.body.target_amount
+        ?? current.target_amount.toString(),
+      target_date: req.body.target_date
+        ?? current.target_date?.toISOString().slice(0, 10),
       linked_account_id: req.body.linked_account_id !== undefined
         ? req.body.linked_account_id
         : current.linked_account_id?.toString() ?? null,
@@ -84,7 +93,11 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     const goal = await updateGoal(req.user.id, req.params.id, data);
-    return res.json({ message: 'Savings goal updated.', goal });
+
+    return res.json({
+      message: 'Savings goal updated.',
+      goal,
+    });
   } catch (error) {
     return next(error);
   }
@@ -93,9 +106,32 @@ router.patch('/:id', async (req, res, next) => {
 // POST /api/goals/:id/contributions
 router.post('/:id/contributions', async (req, res, next) => {
   try {
-    const goal = await contributeToGoal(req.user.id, req.params.id, req.body);
+    const goal = await contributeToGoal(
+      req.user.id,
+      req.params.id,
+      req.body,
+    );
+
     return res.status(201).json({
       message: 'Savings contribution recorded.',
+      goal,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// POST /api/goals/:id/withdrawals
+router.post('/:id/withdrawals', async (req, res, next) => {
+  try {
+    const goal = await withdrawFromGoal(
+      req.user.id,
+      req.params.id,
+      req.body,
+    );
+
+    return res.status(201).json({
+      message: 'Savings withdrawal recorded successfully.',
       goal,
     });
   } catch (error) {
@@ -114,6 +150,7 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     const result = await deleteGoal(req.user.id, req.params.id);
+
     return res.json({
       message: 'Savings goal deleted and contributions refunded.',
       ...result,

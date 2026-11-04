@@ -91,6 +91,12 @@ export default function SavingsGoalsPage() {
     source_account_id: '',
   });
 
+  const [withdrawal, setWithdrawal] = useState({
+    goalId: '',
+    amount: '',
+    destination_account_id: '',
+  });
+
   const [editingId, setEditingId] = useState(null);
 
   const request = useCallback(async (path, options = {}) => {
@@ -146,7 +152,6 @@ export default function SavingsGoalsPage() {
     event.preventDefault();
     setError('');
     setMessage('');
-
     setBusy(true);
 
     try {
@@ -263,6 +268,47 @@ export default function SavingsGoalsPage() {
     }
   }
 
+  async function handleWithdrawal(event) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (!withdrawal.goalId) {
+      setError('Select a savings goal.');
+      return;
+    }
+
+    if (!window.confirm(
+      `Withdraw ${money(withdrawal.amount)} from this savings goal?`
+    )) return;
+
+    setBusy(true);
+
+    try {
+      await request(`/goals/${withdrawal.goalId}/withdrawals`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: Number(withdrawal.amount),
+          destination_account_id: withdrawal.destination_account_id,
+          withdrawal_date: new Date().toISOString().slice(0, 10),
+        }),
+      });
+
+      setMessage('Withdrawal completed successfully.');
+      setWithdrawal({
+        goalId: '',
+        amount: '',
+        destination_account_id: '',
+      });
+
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function getGoalId(goal) {
     return goal._id || goal.id;
   }
@@ -291,6 +337,10 @@ export default function SavingsGoalsPage() {
       ? 'Achieved'
       : goal.status || 'Active';
   }
+
+  const availableAccounts = accounts.filter(
+    (account) => account.type !== 'credit_card'
+  );
 
   return (
     <main style={styles.page}>
@@ -389,7 +439,7 @@ export default function SavingsGoalsPage() {
                 onChange={updateForm}
               >
                 <option value="">No linked account</option>
-                {accounts.map((account) => (
+                {availableAccounts.map((account) => (
                   <option
                     key={account._id || account.id}
                     value={account._id || account.id}
@@ -490,7 +540,92 @@ export default function SavingsGoalsPage() {
                 required
               >
                 <option value="">Select account</option>
-                {accounts.map((account) => (
+                {availableAccounts.map((account) => (
+                  <option
+                    key={account._id || account.id}
+                    value={account._id || account.id}
+                  >
+                    {account.name} — {money(account.current_balance)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button style={styles.button} disabled={busy}>
+              Add Savings
+            </button>
+          </form>
+        </section>
+
+        <section style={{
+          ...styles.panel,
+          borderColor: '#166534',
+        }}>
+          <h2>Withdraw Savings</h2>
+          <p style={{ color: '#94a3b8' }}>
+            Transfer saved money from a goal back into one of your accounts.
+          </p>
+
+          <form
+            onSubmit={handleWithdrawal}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 12,
+              alignItems: 'end',
+            }}
+          >
+            <label style={styles.label}>
+              Savings goal
+              <select
+                style={styles.input}
+                value={withdrawal.goalId}
+                onChange={(event) => setWithdrawal((current) => ({
+                  ...current,
+                  goalId: event.target.value,
+                }))}
+                required
+              >
+                <option value="">Select goal</option>
+                {goals
+                  .filter((goal) => getSaved(goal) > 0)
+                  .map((goal) => (
+                    <option key={getGoalId(goal)} value={getGoalId(goal)}>
+                      {goal.name} — Saved {money(goal.saved_amount)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <label style={styles.label}>
+              Withdrawal amount (₹)
+              <input
+                style={styles.input}
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={withdrawal.amount}
+                onChange={(event) => setWithdrawal((current) => ({
+                  ...current,
+                  amount: event.target.value,
+                }))}
+                required
+              />
+            </label>
+
+            <label style={styles.label}>
+              Destination account
+              <select
+                style={styles.input}
+                value={withdrawal.destination_account_id}
+                onChange={(event) => setWithdrawal((current) => ({
+                  ...current,
+                  destination_account_id: event.target.value,
+                }))}
+                required
+              >
+                <option value="">Select account</option>
+                {availableAccounts.map((account) => (
                   <option
                     key={account._id || account.id}
                     value={account._id || account.id}
@@ -501,8 +636,12 @@ export default function SavingsGoalsPage() {
               </select>
             </label>
 
-            <button style={styles.button} disabled={busy}>
-              Add Savings
+            <button
+              type="submit"
+              style={styles.button}
+              disabled={busy}
+            >
+              Withdraw Savings
             </button>
           </form>
         </section>
@@ -590,9 +729,7 @@ export default function SavingsGoalsPage() {
                       </div>
                       <div>
                         <small style={{ color: '#94a3b8' }}>Days remaining</small>
-                        <h3>
-                          {goal.days_remaining ?? '—'}
-                        </h3>
+                        <h3>{goal.days_remaining ?? '—'}</h3>
                       </div>
                     </div>
 
@@ -602,6 +739,25 @@ export default function SavingsGoalsPage() {
                         ? money(goal.monthly_savings_required)
                         : '—'}
                     </p>
+
+                    {goal.withdrawals?.length > 0 && (
+                      <div style={{
+                        borderTop: '1px solid #344054',
+                        marginTop: 15,
+                        paddingTop: 10,
+                      }}>
+                        <h4>Recent withdrawals</h4>
+                        {goal.withdrawals.slice(0, 3).map((item) => (
+                          <p
+                            key={item.id}
+                            style={{ color: '#94a3b8', fontSize: 13 }}
+                          >
+                            {money(item.amount)} withdrawn ·{' '}
+                            {new Date(item.withdrawal_date).toLocaleDateString('en-IN')}
+                          </p>
+                        ))}
+                      </div>
+                    )}
 
                     <div style={{
                       display: 'flex',

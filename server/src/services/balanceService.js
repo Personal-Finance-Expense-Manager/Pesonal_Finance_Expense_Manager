@@ -4,14 +4,8 @@ import Account from '../models/Account.js';
 import Transaction from '../models/Transaction.js';
 import Transfer from '../models/Transfer.js';
 import GoalContribution from '../models/GoalContribution.js';
+import GoalWithdrawal from '../models/GoalWithdrawal.js';
 import { formatDateOnly, today } from '../utils/period.js';
-
-/**
- * Account balances, net worth and credit card position.
- *
- * Savings contributions reduce the source account balance but remain
- * part of the user's net worth as money allocated to savings goals.
- */
 
 const ZERO = new Decimal(0);
 const CARD_WARNING_PERCENT = 80;
@@ -21,11 +15,11 @@ const d = (value) => (
 );
 
 /**
- * Current balance of one account.
+ * Current account balance.
  *
  * Asset accounts:
  * opening + income - expenses - transfers out + transfers in
- * - savings contributions
+ * - goal contributions + goal withdrawals
  *
  * Credit cards:
  * opening outstanding + expenses - income
@@ -38,6 +32,7 @@ export function computeBalance(account, sums = {}) {
   const transfersIn = d(sums.transfersIn);
   const transfersOut = d(sums.transfersOut);
   const goalContributions = d(sums.goalContributions);
+  const goalWithdrawals = d(sums.goalWithdrawals);
 
   if (account.type === 'credit_card') {
     return opening
@@ -52,7 +47,8 @@ export function computeBalance(account, sums = {}) {
     .minus(expense)
     .minus(transfersOut)
     .plus(transfersIn)
-    .minus(goalContributions);
+    .minus(goalContributions)
+    .plus(goalWithdrawals);
 }
 
 /**
@@ -118,10 +114,8 @@ export function cardPosition(outstanding, creditLimit, dueDay, onDay) {
 }
 
 /**
- * Net worth = account assets + savings goal contributions
+ * Net worth = account assets + net savings goal balance
  * - credit card outstanding.
- *
- * goalSavings must be expressed in the user's base currency.
  */
 export function netWorth(
   accountsWithBalances,
@@ -157,7 +151,7 @@ export function netWorth(
 }
 
 /**
- * Sum transactions, transfers and savings contributions per account.
+ * Sum transactions, transfers, contributions and withdrawals per account.
  */
 async function sumsByAccount(userId) {
   const user = new mongoose.Types.ObjectId(userId.toString());
@@ -167,6 +161,7 @@ async function sumsByAccount(userId) {
     outgoing,
     incoming,
     contributions,
+    withdrawals,
   ] = await Promise.all([
     Transaction.aggregate([
       {
@@ -227,6 +222,18 @@ async function sumsByAccount(userId) {
         },
       },
     ]),
+
+    GoalWithdrawal.aggregate([
+      {
+        $match: { user_id: user },
+      },
+      {
+        $group: {
+          _id: '$destination_account_id',
+          total: { $sum: '$amount' },
+        },
+      },
+    ]),
   ]);
 
   const sums = new Map();
@@ -257,52 +264,86 @@ async function sumsByAccount(userId) {
     get(row._id).goalContributions = row.total;
   }
 
+  for (const row of withdrawals) {
+    get(row._id).goalWithdrawals = row.total;
+  }
+
   return sums;
 }
 
 /**
- * Sum savings contributions in the user's base currency.
- *
- * Contributions from accounts in other currencies are excluded because
- * no exchange-rate conversion is available here.
+ * Calculate net savings in the user's base currency.
+ * Net savings = contributions - withdrawals.
  */
 async function savingsInBaseCurrency(userId, baseCurrency) {
   const user = new mongoose.Types.ObjectId(userId.toString());
 
-  const result = await GoalContribution.aggregate([
-    {
-      $match: { user_id: user },
-    },
-    {
-      $lookup: {
-        from: 'accounts',
-        localField: 'source_account_id',
-        foreignField: '_id',
-        as: 'sourceAccount',
+  const [contributions, withdrawals] = await Promise.all([
+    GoalContribution.aggregate([
+      {
+        $match: { user_id: user },
       },
-    },
-    {
-      $unwind: '$sourceAccount',
-    },
-    {
-      $match: {
-        'sourceAccount.currency': baseCurrency,
+      {
+        $lookup: {
+          from: 'accounts',
+          localField: 'source_account_id',
+          foreignField: '_id',
+          as: 'sourceAccount',
+        },
       },
-    },
-    {
-      $group: {
-        _id: null,
-        total: { $sum: '$amount' },
+      {
+        $unwind: '$sourceAccount',
       },
-    },
+      {
+        $match: {
+          'sourceAccount.currency': baseCurrency,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' },
+        },
+      },
+    ]),
+
+    GoalWithdrawal.aggregate([
+      {
+        $match: { user_id: user },
+      },
+      {
+        $lookup: {
+          from: 'accounts',
+          localField: 'destination_account_id',
+          foreignField: '_id',
+          as: 'destinationAccount',
+        },
+      },
+      {
+        $unwind: '$destinationAccount',
+      },
+      {
+        $match: {
+          'destinationAccount.currency': baseCurrency,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' },
+        },
+      },
+    ]),
   ]);
 
-  return result[0]?.total?.toString() ?? '0.00';
+  const contributed = d(contributions[0]?.total);
+  const withdrawn = d(withdrawals[0]?.total);
+
+  return contributed.minus(withdrawn).toFixed(2);
 }
 
 /**
- * Everything US-07 shows for one user:
- * account balances, credit card positions and net worth.
+ * Account balances, credit card positions and net worth.
  */
 export async function accountSummary(
   userId,
