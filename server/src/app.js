@@ -10,6 +10,9 @@ import categoryRoutes from './routes/categories.js';
 import tagRoutes from './routes/tags.js';
 import reportRoutes from './routes/reports.js';
 import dataRoutes from './routes/data.js';
+import recurringRuleRoutes from './routes/recurringRules.js';
+import billReminderRoutes from './routes/billReminders.js';
+import notificationRoutes from './routes/notifications.js';
 import {
   attachmentFileRoutes,
   attachmentRoutes,
@@ -32,6 +35,9 @@ import requestTiming from './middleware/requestTiming.js';
  *   /api/reports      US-20          (#34)
  *   /api/attachments  US-23          (#57)
  *   /api/data         US-24          (#58)
+ *   /api/recurring-rules  US-16      (#43)
+ *   /api/bill-reminders   US-17      (#44)
+ *   /api/notifications    US-17      (#44)
  */
 const app = express();
 
@@ -64,6 +70,9 @@ app.use('/api/categories', requireUser, categoryRoutes);
 app.use('/api/tags', requireUser, tagRoutes);
 app.use('/api/reports', requireUser, reportRoutes);
 app.use('/api/data', requireUser, dataRoutes);
+app.use('/api/recurring-rules', requireUser, recurringRuleRoutes);
+app.use('/api/bill-reminders', requireUser, billReminderRoutes);
+app.use('/api/notifications', requireUser, notificationRoutes);
 // The file itself is served through a short-lived signed URL, which an <img>
 // or download link can use without the Authorization header (REQ-81).
 app.use('/api/attachments', attachmentFileRoutes);

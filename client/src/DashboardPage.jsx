@@ -133,6 +133,7 @@ export default function DashboardPage() {
             <a href="#/" style={linkStyle}>← Back</a>
             <a href="#/accounts" style={linkStyle}>Accounts</a>
             <a href="#/budgets" style={linkStyle}>Budgets</a>
+            <a href="#/bills" style={linkStyle}>Bills</a>
           </nav>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
             <div>
@@ -180,6 +181,38 @@ export default function DashboardPage() {
 
         {data && (
           <>
+            {/* US-17 (REQ-59): unpaid bills past their due date, shown first */}
+            {data.overdue_bills?.count > 0 && (
+              <section
+                role="region"
+                aria-label="Overdue bills"
+                style={{ ...cardStyle, borderColor: '#7f1d1d', background: '#2a1418' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+                  <h2 style={{ margin: '0 0 12px', fontSize: 18, color: '#fecaca' }}>
+                    ⚠ {data.overdue_bills.count} overdue bill{data.overdue_bills.count === 1 ? '' : 's'} · {money(data.overdue_bills.total, currency)}
+                  </h2>
+                  <a href="#/bills" style={{ ...linkStyle, fontSize: 14 }}>Pay or manage</a>
+                </div>
+                {data.overdue_bills.items.map((bill) => (
+                  <div key={bill.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6px 0', fontSize: 14, borderTop: '1px solid #4c1d24' }}>
+                    <span>
+                      <strong>{bill.name}</strong>{' '}
+                      <span style={{ color: '#fca5a5' }}>
+                        · {bill.days_overdue} day{bill.days_overdue === 1 ? '' : 's'} overdue (due {niceDate(bill.due_date)})
+                      </span>
+                    </span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{bill.amount ? money(bill.amount, currency) : ''}</span>
+                  </div>
+                ))}
+                {data.overdue_bills.count > data.overdue_bills.items.length && (
+                  <a href="#/bills" style={{ ...linkStyle, display: 'inline-block', marginTop: 8, fontSize: 14 }}>
+                    and {data.overdue_bills.count - data.overdue_bills.items.length} more →
+                  </a>
+                )}
+              </section>
+            )}
+
             {/* REQ-69: the four headline figures */}
             <div
               role="region"

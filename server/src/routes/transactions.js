@@ -1,13 +1,12 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import Transaction from '../models/Transaction.js';
-import Account from '../models/Account.js';
 import Tag from '../models/Tag.js';
 import TransactionTag from '../models/TransactionTag.js';
 import { validateTransactionInput } from '../validators/transaction.js';
 import { createTransfer, presentTransfer } from '../services/transferService.js';
 import {
-  resolveTagIds,
+  createTransactionRecord,
   loadTagNames,
   presentTransaction,
   updateTransaction,
@@ -362,6 +361,9 @@ router.get('/', async (req, res, next) => {
         is_excluded_from_budget: Boolean(item.is_excluded_from_budget),
         tags: tagsByTransaction.get(String(item._id)) || [],
         attachment_count: attachmentCounts.get(String(item._id)) || 0,
+        is_system_generated: Boolean(item.is_system_generated),
+        recurring_rule_id: item.recurring_rule_id ? String(item.recurring_rule_id) : null,
+        linked_reminder_id: item.linked_reminder_id ? String(item.linked_reminder_id) : null,
       })),
 
       pagination: {
@@ -406,86 +408,7 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    const account = await Account.findOne({
-      _id: data.account_id,
-      user_id: userId,
-      is_archived: false,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        message: 'Account not found or unavailable.',
-      });
-    }
-
-    if (data.category_id) {
-      const Category = mongoose.model('Category');
-
-      const category = await Category.findOne({
-        _id: data.category_id,
-        user_id: userId,
-      });
-
-      if (!category) {
-        return res.status(400).json({
-          message: 'Select a valid category.',
-        });
-      }
-    }
-
-    // REQ-32: every split category must be the caller's own, exactly as the
-    // parent category is checked above.
-    if (data.splits && data.splits.length) {
-      const Category = mongoose.model('Category');
-      const ids = data.splits.map((split) => split.category_id).filter(Boolean);
-
-      const owned = await Category.countDocuments({
-        _id: { $in: ids },
-        user_id: userId,
-      });
-
-      if (owned !== new Set(ids.map(String)).size) {
-        return res.status(400).json({
-          message: 'Select a valid category for every split.',
-        });
-      }
-    }
-
-    const transaction = await Transaction.create({
-      user_id: userId,
-      account_id: data.account_id,
-      category_id: data.category_id,
-      splits: data.splits || [],
-      is_excluded_from_budget: data.is_excluded_from_budget === true,
-      type: data.type,
-      amount: data.amount,
-      currency: account.currency || 'INR',
-      transaction_date: data.transaction_date,
-      payment_mode: data.payment_mode,
-      note: data.note,
-    });
-
-    try {
-      if (data.tags.length) {
-        // Use the current transaction service to resolve or create tag IDs.
-        const tagIds = await resolveTagIds(userId, data.tags);
-
-        await TransactionTag.insertMany(
-          tagIds.map((tagId) => ({
-            user_id: userId,
-            transaction_id: transaction._id,
-            tag_id: tagId,
-          })),
-        );
-      }
-    } catch (error) {
-      await Transaction.deleteOne({
-        _id: transaction._id,
-        user_id: userId,
-      });
-
-      throw error;
-    }
+    const { transaction } = await createTransactionRecord(userId, data);
 
     return res.status(201).json({
       message: 'Transaction created successfully.',

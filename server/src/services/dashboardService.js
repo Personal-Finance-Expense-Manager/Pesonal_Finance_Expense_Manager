@@ -5,6 +5,7 @@ import Category from '../models/Category.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 import { accountSummary } from './balanceService.js';
+import { overdueBills } from './billReminderService.js';
 import { spentForBudget, summarise } from './budgetService.js';
 import { groupByCategoryStages } from './splitAttribution.js';
 import { formatDateOnly, monthlyPeriod, today } from '../utils/period.js';
@@ -80,7 +81,7 @@ export async function dashboard(userId, baseCurrencyHint) {
     transaction_date: { $gte: period.start, $lte: period.end },
   };
 
-  const [typeRows, categoryRows, accounts, budgets] = await Promise.all([
+  const [typeRows, categoryRows, accounts, budgets, overdue] = await Promise.all([
     Transaction.aggregate([
       { $match: match },
       { $group: { _id: '$type', total: { $sum: amountField } } },
@@ -92,6 +93,8 @@ export async function dashboard(userId, baseCurrencyHint) {
     ]),
     accountSummary(userId, baseCurrency),
     Budget.find({ user_id: userId, period_start: { $lte: onDay }, period_end: { $gte: onDay } }).lean(),
+    // US-17 (REQ-59): unpaid bills past their due date.
+    overdueBills(userId, onDay),
   ]);
 
   const totals = periodTotals(typeRows);
@@ -128,5 +131,6 @@ export async function dashboard(userId, baseCurrencyHint) {
     net_worth_detail: accounts.net_worth,
     top_categories: topCategories(categoryRows, names, totals.total_expense),
     budgets: budgetSummaries,
+    overdue_bills: overdue,
   };
 }

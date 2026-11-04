@@ -729,6 +729,8 @@ export default function App() {
                   ['Charts', '#/charts'],
                   ['Reports', '#/reports'],
                   ['Budgets', '#/budgets'],
+                  ['Recurring', '#/recurring'],
+                  ['Bill reminders', '#/bills'],
                   ['Import & export', '#/data'],
                   ['App lock', '#/security'],
                 ].map(([label, href]) => (

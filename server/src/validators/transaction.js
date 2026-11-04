@@ -45,7 +45,7 @@ function isObjectId(value) {
  * Shared by the transaction amount and by every split part (REQ-32), so a
  * split is held to exactly the same rule as the total it must add up to.
  */
-function parseAmount(raw) {
+export function parseAmount(raw) {
   const value =
     typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
 

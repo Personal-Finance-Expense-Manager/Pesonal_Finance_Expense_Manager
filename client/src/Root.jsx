@@ -19,6 +19,8 @@ const loaders = {
   charts: () => import('./ChartsPage.jsx'),
   reports: () => import('./ReportsPage.jsx'),
   security: () => import('./SecurityPage.jsx'),
+  recurring: () => import('./RecurringPage.jsx'),
+  bills: () => import('./BillRemindersPage.jsx'),
 };
 
 const AccountsPage = lazy(loaders.accounts);
@@ -31,6 +33,8 @@ const ImportExportPage = lazy(loaders.data);
 const ChartsPage = lazy(loaders.charts);
 const ReportsPage = lazy(loaders.reports);
 const SecurityPage = lazy(loaders.security);
+const RecurringPage = lazy(loaders.recurring);
+const BillRemindersPage = lazy(loaders.bills);
 
 function prefetchPages() {
   const run = () => Object.values(loaders).forEach((load) => load().catch(() => {}));
@@ -72,6 +76,8 @@ export default function Root() {
 function Page({ hash }) {
   if (hash === '#/accounts') return <AccountsPage />;
   if (hash === '#/budgets') return <BudgetsPage />;
+  if (hash === '#/recurring') return <RecurringPage />;
+  if (hash === '#/bills') return <BillRemindersPage />;
   if (hash === '#/transactions') return <TransactionsPage />;
   if (hash === '#/categories') return <CategoriesPage />;
   if (hash === '#/totals') return <TotalsPage />;
