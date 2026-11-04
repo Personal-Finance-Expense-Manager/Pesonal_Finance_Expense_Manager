@@ -18,6 +18,7 @@ import {
   attachmentRoutes,
   transactionAttachmentRoutes,
 } from './routes/attachments.js';
+import goalRoutes from './routes/goals.js';
 import { requireUser } from './middleware/currentUser.js';
 import requestTiming from './middleware/requestTiming.js';
 
@@ -25,19 +26,20 @@ import requestTiming from './middleware/requestTiming.js';
  * Express application for the Personal Finance & Expense Manager API.
  *
  * Feature routers:
- *   /api/auth         US-03, US-04   (#15, #16)
- *   /api/app-lock     US-05          (#17)
- *   /api/accounts     US-06, US-07   (#20, #21)
- *   /api/transactions US-08 .. US-10 (#24, #25, #26)
- *   /api/categories   US-12, US-13   (#30, #31)
- *   /api/tags         US-13          (#31)
- *   /api/budgets      US-14          (#35)
- *   /api/reports      US-20          (#34)
- *   /api/attachments  US-23          (#57)
- *   /api/data         US-24          (#58)
- *   /api/recurring-rules  US-16      (#43)
- *   /api/bill-reminders   US-17      (#44)
- *   /api/notifications    US-17      (#44)
+ *   /api/auth             US-03, US-04   (#15, #16)
+ *   /api/app-lock         US-05          (#17)
+ *   /api/accounts         US-06, US-07   (#20, #21)
+ *   /api/transactions     US-08 .. US-10 (#24, #25, #26)
+ *   /api/categories       US-12, US-13   (#30, #31)
+ *   /api/tags             US-13          (#31)
+ *   /api/budgets          US-14          (#35)
+ *   /api/reports          US-20          (#34)
+ *   /api/attachments      US-23          (#57)
+ *   /api/data             US-24          (#58)
+ *   /api/recurring-rules  US-16          (#43)
+ *   /api/bill-reminders   US-17          (#44)
+ *   /api/notifications    US-17          (#44)
+ *   /api/goals            US-18          (#47)
  */
 const app = express();
 
@@ -47,8 +49,6 @@ app.use(requestTiming);
 // Allow requests from the React client.
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || '*',
-  // Lets the client read the file name of an export download (US-24) and
-  // the server time of each request (US-27).
   exposedHeaders: ['Content-Disposition', 'Server-Timing'],
 }));
 
@@ -56,15 +56,25 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// API routes
+// API routes.
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
-// US-05: authenticates each route itself with a real session token, because
-// the lock state belongs to the session (the X-User-Id header has none).
+
+// US-05: authenticates each route itself with a real session token,
+// because the lock state belongs to the session.
 app.use('/api/app-lock', appLockRoutes);
+
 app.use('/api/accounts', requireUser, accountRoutes);
 app.use('/api/budgets', requireUser, budgetRoutes);
-app.use('/api/transactions/:id/attachments', requireUser, transactionAttachmentRoutes);
+
+// US-18: Savings goals and contributions.
+app.use('/api/goals', requireUser, goalRoutes);
+
+app.use(
+  '/api/transactions/:id/attachments',
+  requireUser,
+  transactionAttachmentRoutes
+);
 app.use('/api/transactions', requireUser, transactionRoutes);
 app.use('/api/categories', requireUser, categoryRoutes);
 app.use('/api/tags', requireUser, tagRoutes);
@@ -73,12 +83,13 @@ app.use('/api/data', requireUser, dataRoutes);
 app.use('/api/recurring-rules', requireUser, recurringRuleRoutes);
 app.use('/api/bill-reminders', requireUser, billReminderRoutes);
 app.use('/api/notifications', requireUser, notificationRoutes);
-// The file itself is served through a short-lived signed URL, which an <img>
-// or download link can use without the Authorization header (REQ-81).
+
+// The file itself is served through a short-lived signed URL,
+// which an <img> or download link can use without the Authorization header.
 app.use('/api/attachments', attachmentFileRoutes);
 app.use('/api/attachments', requireUser, attachmentRoutes);
 
-// Unknown route
+// Unknown route handler.
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not found',

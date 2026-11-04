@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import './App.css';
 import { saveSession, clearSession, getToken, getUser, isSignedIn } from './auth.js';
@@ -36,9 +37,6 @@ function getInitialScreen() {
     };
   }
 
-  // A stored session survives a reload and a trip to a feature page, so the
-  // signed-in screen - not the sign-up form - is what a signed-in user comes
-  // back to (US-25, REQ-93).
   if (isSignedIn()) {
     return { mode: 'account', email: '', token: '' };
   }
@@ -58,8 +56,6 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('');
 
   const [code, setCode] = useState('');
-  // Seeded from the stored session so navigating back to "#/" shows the
-  // signed-in screen instead of dropping the user at sign-in.
   const [token, setToken] = useState(() => getToken() || null);
   const [loggedInUser, setLoggedInUser] = useState(() => getUser());
 
@@ -85,9 +81,6 @@ export default function App() {
       .catch(() => setHealth('API connection unavailable'));
   }, []);
 
-  // A stored session can have expired or been revoked while the tab was shut.
-  // Check it once on mount so a stale token shows sign-in rather than a
-  // signed-in screen whose pages then fail (US-25, REQ-93).
   useEffect(() => {
     const stored = getToken();
 
@@ -106,7 +99,7 @@ export default function App() {
         setMode('login');
       })
       .catch(() => {
-        // Offline or the API is down: keep the session and let the page say so.
+        // Keep the session if the API is temporarily unavailable.
       });
 
     return () => {
@@ -233,8 +226,6 @@ export default function App() {
       setToken(result.token);
       setLoggedInUser(result.user);
       setLoginPassword('');
-
-      // US-25 (REQ-93): keep the session so every feature page can send it.
       saveSession(result.token, result.user);
 
       setMessage('Sign-in successful.');
@@ -311,7 +302,6 @@ export default function App() {
       setMessage(result.message);
       setMode('login');
 
-      // Remove the one-time token from the address bar.
       window.history.replaceState({}, document.title, '/');
     } catch (requestError) {
       setError(requestError.message);
@@ -710,8 +700,6 @@ export default function App() {
               </p>
               <p>{loggedInUser.email}</p>
 
-              {/* US-25 (REQ-93): the session now authenticates every feature
-                  page, so the signed-in user can go straight to the app. */}
               <nav
                 style={{
                   display: 'grid',
@@ -729,6 +717,7 @@ export default function App() {
                   ['Charts', '#/charts'],
                   ['Reports', '#/reports'],
                   ['Budgets', '#/budgets'],
+                  ['Savings Goals', '#/goals'],
                   ['Recurring', '#/recurring'],
                   ['Bill reminders', '#/bills'],
                   ['Import & export', '#/data'],
