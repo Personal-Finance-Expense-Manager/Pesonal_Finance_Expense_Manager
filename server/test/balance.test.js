@@ -136,3 +136,44 @@ test('REQ-21 next statement due date', () => {
   assert.equal(on(10, '2026-12-15'), '2027-01-10'); // across the year end
   assert.equal(nextDueDate(null, TODAY), null);
 });
+
+
+
+
+// ---------------------------------------------------------------------------
+// US-19: Goal withdrawals
+// ---------------------------------------------------------------------------
+
+test('US-19 withdrawal increases destination account balance', () => {
+  const bank = account('bank', '4500');
+
+  const balance = computeBalance(bank, {
+    goalWithdrawals: '500',
+  });
+
+  assert.equal(balance.toFixed(2), '5000.00');
+});
+
+test('US-19 withdrawing savings does not change net worth', () => {
+  // Before withdrawal: 4500 in bank + 500 in savings goal.
+  const before = netWorth([
+    {
+      account: account('bank', '0'),
+      balance: computeBalance(account('bank', '4500')),
+    },
+  ], 'INR', '500');
+
+  // After withdrawal: 5000 in bank + 0 in savings goal.
+  const after = netWorth([
+    {
+      account: account('bank', '0'),
+      balance: computeBalance(account('bank', '4500'), {
+        goalWithdrawals: '500',
+      }),
+    },
+  ], 'INR', '0');
+
+  assert.equal(before.net_worth, '5000.00');
+  assert.equal(after.net_worth, '5000.00');
+  assert.equal(before.net_worth, after.net_worth);
+});
