@@ -265,6 +265,46 @@ Server settings (see `server/.env.example`): `APP_LOCK_SECRET` (falls back to
 
 ---
 
+## Recurring transactions and bill reminders
+
+**Recurring transactions (US-16).** `#/recurring` creates rules (daily, weekly,
+monthly, quarterly, yearly; optional end date *or* occurrence count). Each due
+date a transaction is created for the rule, from 00:05 IST, marked
+system-generated and linked to its rule. It is an ordinary transaction: it can
+be edited and it moves the account balance like any other. A rule can be
+edited (future occurrences only), paused, resumed (the paused period is not
+back-filled) and deleted (transactions already created are kept). A scheduled
+31st falls on the last day of shorter months and returns to the 31st after
+them (31 Jan, 28/29 Feb, 31 Mar, 30 Apr).
+
+**Bill reminders (US-17).** `#/bills` holds reminders with a due date and a
+lead time (default 3 days). **Mark as paid** records a real expense, links it
+to the reminder and sets the reminder to Paid; pressing it twice, or from two
+tabs, creates one expense. An unpaid bill after its due date becomes Overdue
+and is shown first on the dashboard.
+
+**How the scheduler stays correct.** It is a catch-up pass, not a timer per
+rule. It runs when the API starts and then every minute, and each pass creates
+exactly the occurrences that are due and not yet created, each with its
+original due date. Duplicates are prevented by the database, not by the
+timer: a ledger collection (`recurringoccurrences`) has a unique index on
+(rule, scheduled date), and transactions carry unique indexes on
+(rule, scheduled date) and on the reminder they paid. A deleted or purged
+generated transaction therefore is not generated again, and several API
+instances can run side by side. `SCHEDULER_ENABLED=false` switches it off.
+
+**Notifications.** Each reminder is sent once per channel on its notification
+date (due date minus lead time), from 00:05 IST. Every attempt is recorded in
+`notificationdeliveries` with an honest status: `sent`, `failed` (retried up to
+three times with exponential backoff), `skipped_not_configured` or
+`logged_dev`. A status of `sent` means a real provider accepted the message.
+
+| Channel | Status |
+|---|---|
+| In-app | Works out of the box (shown on `#/bills`). |
+| Email | Works when `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `EMAIL_FROM` are set. |
+| Push | **Needs a provider, which is not configured here.** The channel, the subscription store (`POST /api/notifications/push-subscriptions`) and the delivery log are in place. To switch it on, register an object with `async send(subscription, { title, body, data })` using `setPushProvider()` from `server/src/services/notifications/channels.js` at start-up (for example a Web Push sender configured with VAPID keys). Until then push is recorded as `skipped_not_configured`. |
+
 ## Repository Layout
 
 ```text

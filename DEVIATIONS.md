@@ -267,6 +267,32 @@ network is not lost - is met where users actually record transactions.
 
 ---
 
+## 10. Recurring transactions and bill reminders (US-16, US-17): decisions and limits
+
+- **End date or count, not both.** The SRS says "an end date, an occurrence
+  count, or neither"; a rule with both is refused.
+- **Start date today or later.** A start date in the past would back-fill history
+  on the first run. Back-filling is reserved for occurrences the scheduler
+  genuinely missed (REQ-60).
+- **The scheduler runs inside the API process** (as the budget and purge jobs
+  do), every minute, with a catch-up pass at start-up. There is no separate
+  worker or queue. The database, not the timer, prevents duplicates.
+- **Push notifications have no provider.** The channel, subscription storage and
+  delivery log exist; delivery needs a provider account (see README). Until one
+  is registered push is recorded as `skipped_not_configured`, never `sent`.
+- **Paying a bill needs an account.** A reminder can save a default account and
+  category; without one the page asks at payment time.
+- **Rule delete is a soft delete** (status `deleted`) so generated transactions
+  keep a valid link; the rule is hidden everywhere.
+- **Resume continues from the first occurrence on or after today**, so an
+  occurrence due on the day of resuming is created.
+- **Unavailable account at generation time:** the occurrence is recorded as
+  skipped, the user gets an in-app notice and the rule continues. A deleted
+  category produces an uncategorised transaction rather than a lost one.
+- **`POST /api/transactions` now calls a shared `createTransactionRecord`**
+  (behaviour unchanged) so the API, the scheduler and bill payment share one
+  implementation.
+
 ## Summary for the demonstration
 
 | # | Deviation | Status |
@@ -280,6 +306,7 @@ network is not lost - is met where users actually record transactions.
 | 7 | PER-7 not shown at 200 users; PER-8 and PER-11 not measurable yet | Open; see PERFORMANCE.md |
 | 8 | App lock: web client, WebAuthn biometric, lock enforced by the server | Accepted for the web release |
 | 9 | Offline capture in the web client; a queued transaction carries no receipt | Accepted for the web release |
+| 10 | Recurring and bill reminders: push has no provider; end date or count (not both); start today or later | Accepted; see section 10 |
 
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as

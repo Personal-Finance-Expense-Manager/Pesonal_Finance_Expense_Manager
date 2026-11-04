@@ -19,7 +19,7 @@ could not be shown. Re-run the server benchmark on any machine with
 | PER-5 | Page of 25 within 1 s; filter/search within 2 s | 87 ms; 79 ms (p95) | Met |
 | PER-6 | Balances consistent within 5 s | 57 ms (balances are computed on every read) | Met |
 | PER-7 | 200 concurrent active users, ≤ 20 % degradation | Met at 100 users; not shown at 200 on the test machine | **Not shown** |
-| PER-8 | Scheduler done within 10 min of 00:05 IST | The scheduler (US-16, US-17) is not built yet | Not measurable yet |
+| PER-8 | Scheduler done within 10 min of 00:05 IST | The scheduler (US-16, US-17) runs every minute. Measured on a laptop-class setup (one API process, one local MongoDB 8.3): 5,000 rules all due on the same day were turned into 5,000 transactions in about 28 s with no failures, and a repeat pass took under 0.1 s and created nothing. Not measured against a production-sized database or network. | Met in the measurement above |
 | PER-9 | 1,000-row import: preview ≤ 15 s, commit ≤ 15 s | 0.27 s; 1.2 s | Met |
 | PER-10 | No query over 500 ms; user/date/category queries indexed | Every checked query uses an index, 5-11 ms | Met |
 | PER-11 | Mobile package ≤ 30 MB, offline cache ≤ 50 MB | No mobile app; web bundle 74 KB gzipped. No offline cache yet (US-11) | Not applicable yet |

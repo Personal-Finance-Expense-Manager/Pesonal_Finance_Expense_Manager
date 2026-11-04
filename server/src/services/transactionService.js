@@ -95,6 +95,81 @@ export function presentTransaction(transaction, tags = []) {
 }
 
 // ---------------------------------------------------------------------------
+// Create (shared by POST /api/transactions, recurring rules and bill payment)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create an income or expense for a user, after checking that the account and
+ * every category belong to them. This is the one place that does it: the API
+ * route, the recurring-rule scheduler (US-16) and "mark bill as paid" (US-17)
+ * all call it, so they cannot drift apart.
+ *
+ * `data` is validated input (validateTransactionInput) or the equivalent built
+ * by a service. `link` carries the optional recurring/bill link fields.
+ * Throws ApiError; on a tag failure the transaction is removed again.
+ */
+export async function createTransactionRecord(userId, data, link = {}) {
+  const account = await Account.findOne({
+    _id: data.account_id,
+    user_id: userId,
+    is_archived: false,
+  });
+
+  if (!account) throw new ApiError(404, 'Account not found or unavailable.');
+
+  if (data.category_id) {
+    const category = await Category.findOne({ _id: data.category_id, user_id: userId });
+    if (!category) throw new ApiError(400, 'Select a valid category.');
+  }
+
+  // REQ-32: every split category must be the caller's own.
+  if (data.splits && data.splits.length) {
+    const ids = data.splits.map((split) => split.category_id).filter(Boolean);
+    const owned = await Category.countDocuments({ _id: { $in: ids }, user_id: userId });
+
+    if (owned !== new Set(ids.map(String)).size) {
+      throw new ApiError(400, 'Select a valid category for every split.');
+    }
+  }
+
+  const tags = data.tags || [];
+
+  const transaction = await Transaction.create({
+    user_id: userId,
+    account_id: data.account_id,
+    category_id: data.category_id,
+    splits: data.splits || [],
+    is_excluded_from_budget: data.is_excluded_from_budget === true,
+    type: data.type,
+    amount: data.amount,
+    currency: account.currency || 'INR',
+    transaction_date: data.transaction_date,
+    payment_mode: data.payment_mode,
+    note: data.note,
+    ...link,
+  });
+
+  try {
+    if (tags.length) {
+      const tagIds = await resolveTagIds(userId, tags);
+
+      await TransactionTag.insertMany(
+        tagIds.map((tagId) => ({
+          user_id: userId,
+          transaction_id: transaction._id,
+          tag_id: tagId,
+        })),
+      );
+    }
+  } catch (error) {
+    await Transaction.deleteOne({ _id: transaction._id, user_id: userId });
+    throw error;
+  }
+
+  return { transaction, tags };
+}
+
+// ---------------------------------------------------------------------------
 // Lookup
 // ---------------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import {
   hasAtMostTwoDecimalPlaces,
   isPositiveMoney,
@@ -123,6 +123,29 @@ const transactionSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    // US-16 (REQ-54): set on transactions the scheduler generated from a
+    // recurring rule. The user can still edit them like any other.
+    is_system_generated: {
+      type: Boolean,
+      default: false,
+    },
+    recurring_rule_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'RecurringRule',
+      default: null,
+    },
+    // The original due date of the occurrence (REQ-60); it never changes,
+    // even if the user later edits transaction_date.
+    recurring_scheduled_date: {
+      type: Date,
+      default: null,
+    },
+    // US-17 (REQ-58): the bill reminder this expense paid.
+    linked_reminder_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Reminder',
+      default: null,
+    },
     is_deleted: {
       type: Boolean,
       default: false,
@@ -154,6 +177,24 @@ transactionSchema.index({
   account_id: 1,
   transaction_date: -1,
 });
+
+// US-16: one transaction per rule occurrence, enforced by the database.
+transactionSchema.index(
+  { recurring_rule_id: 1, recurring_scheduled_date: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { recurring_rule_id: { $type: 'objectId' } },
+  },
+);
+
+// US-17: one expense per paid bill reminder.
+transactionSchema.index(
+  { linked_reminder_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { linked_reminder_id: { $type: 'objectId' } },
+  },
+);
 
 transactionSchema.index(
   { deleted_at: 1 },
