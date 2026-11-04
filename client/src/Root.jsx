@@ -1,13 +1,7 @@
-
 import { Suspense, lazy, useEffect, useState } from 'react';
 import App from './App.jsx';
 import AppLockGate from './AppLockGate.jsx';
 
-// US-27 (PER-2): each feature page is its own file. The home/sign-in screen
-// loads without the code of every other page, and the pages are fetched in
-// the background once the browser is idle, so moving between screens does
-// not wait for a download. New pages (charts especially) stay off the first
-// screen the same way: add a loader here and a line in Page below.
 const loaders = {
   accounts: () => import('./AccountsPage.jsx'),
   budgets: () => import('./BudgetsPage.jsx'),
@@ -21,6 +15,7 @@ const loaders = {
   security: () => import('./SecurityPage.jsx'),
   recurring: () => import('./RecurringPage.jsx'),
   bills: () => import('./BillRemindersPage.jsx'),
+  goals: () => import('./SavingsGoalsPage.jsx'),
 };
 
 const AccountsPage = lazy(loaders.accounts);
@@ -35,11 +30,16 @@ const ReportsPage = lazy(loaders.reports);
 const SecurityPage = lazy(loaders.security);
 const RecurringPage = lazy(loaders.recurring);
 const BillRemindersPage = lazy(loaders.bills);
+const SavingsGoalsPage = lazy(loaders.goals);
 
 function prefetchPages() {
   const run = () => Object.values(loaders).forEach((load) => load().catch(() => {}));
-  if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 3000 });
-  else window.setTimeout(run, 1500);
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 3000 });
+  } else {
+    window.setTimeout(run, 1500);
+  }
 }
 
 function Loading() {
@@ -55,6 +55,7 @@ export default function Root() {
 
   useEffect(() => {
     const onChange = () => setHash(window.location.hash);
+
     window.addEventListener('hashchange', onChange);
 
     return () => window.removeEventListener('hashchange', onChange);
@@ -62,8 +63,6 @@ export default function Root() {
 
   useEffect(prefetchPages, []);
 
-  // US-05 (REQ-11): while the app lock is engaged the gate shows the lock
-  // screen instead of any page, and the pages are not mounted at all.
   return (
     <AppLockGate>
       <Suspense fallback={<Loading />}>
@@ -86,6 +85,7 @@ function Page({ hash }) {
   if (hash === '#/charts') return <ChartsPage />;
   if (hash === '#/reports') return <ReportsPage />;
   if (hash === '#/security') return <SecurityPage />;
+  if (hash === '#/goals') return <SavingsGoalsPage />;
 
   return <App />;
 }
