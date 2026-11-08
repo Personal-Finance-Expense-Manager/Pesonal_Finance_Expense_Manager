@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Import and export - US-24 (#58), SRS 5.9, REQ-82 to REQ-87.
@@ -14,7 +15,6 @@ import { authHeaders, isSignedIn } from './auth.js';
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 // The CSV travels inside a JSON request, and the API accepts 1 MB of JSON.
 const MAX_FILE_BYTES = 900 * 1024;
@@ -90,28 +90,20 @@ const secondaryButton = {
 
 const cell = { padding: '8px 10px', borderTop: `1px solid ${colors.cardBorder}`, verticalAlign: 'top' };
 
-function readStoredUserId() {
-  try {
-    return localStorage.getItem(DEV_USER_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-async function request(path, userId, options = {}) {
+async function request(path, options = {}) {
   const response = await fetch(`${API_URL}/api/${path}`, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...authHeaders(userId),
+      ...authHeaders(),
       ...options.headers,
     },
   });
   return response;
 }
 
-async function json(path, userId, options) {
-  const response = await request(path, userId, options);
+async function json(path, options) {
+  const response = await request(path, options);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(body.message || (response.status === 413 ? 'That file is too large.' : 'Request failed.'));
@@ -120,8 +112,8 @@ async function json(path, userId, options) {
 }
 
 /** Download a file from an authenticated endpoint. */
-async function download(path, userId, fallbackName) {
-  const response = await request(path, userId);
+async function download(path, fallbackName) {
+  const response = await request(path);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.message || 'Download failed.');
@@ -140,9 +132,6 @@ async function download(path, userId, fallbackName) {
 }
 
 export default function ImportExportPage() {
-  const [userId, setUserId] = useState(readStoredUserId);
-  const [userIdDraft, setUserIdDraft] = useState(readStoredUserId);
-
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [exportMessage, setExportMessage] = useState('');
@@ -156,18 +145,7 @@ export default function ImportExportPage() {
   const [busy, setBusy] = useState(false);
   const [fileKey, setFileKey] = useState(0);
 
-  const ready = Boolean(userId) || isSignedIn();
-
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage can be unavailable; the value still works for this visit.
-    }
-    setUserId(value);
-  }
+  const ready = isSignedIn();
 
   async function exportCsv(event) {
     event.preventDefault();
@@ -176,7 +154,7 @@ export default function ImportExportPage() {
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
     try {
-      const name = await download(`data/transactions.csv?${params}`, userId, 'pfem-transactions.csv');
+      const name = await download(`data/transactions.csv?${params}`, 'pfem-transactions.csv');
       setExportMessage(`Downloaded ${name}.`);
     } catch (error) {
       setExportMessage(error.message);
@@ -186,7 +164,7 @@ export default function ImportExportPage() {
   async function exportJson() {
     setExportMessage('');
     try {
-      const name = await download('data/export.json', userId, 'pfem-my-data.json');
+      const name = await download('data/export.json', 'pfem-my-data.json');
       setExportMessage(`Downloaded ${name}.`);
     } catch (error) {
       setExportMessage(error.message);
@@ -195,7 +173,7 @@ export default function ImportExportPage() {
 
   async function downloadTemplate() {
     try {
-      await download('data/import/template', userId, 'pfem-import-template.csv');
+      await download('data/import/template', 'pfem-import-template.csv');
     } catch (error) {
       setImportMessage(error.message);
     }
@@ -215,7 +193,7 @@ export default function ImportExportPage() {
     try {
       const body = { csv: text };
       if (map) body.mapping = map;
-      const result = await json('data/import/preview', userId, { method: 'POST', body: JSON.stringify(body) });
+      const result = await json('data/import/preview', { method: 'POST', body: JSON.stringify(body) });
       setPreview(result.data);
       setMapping(result.data.mapping || {});
       setIncludeDuplicates([]);
@@ -269,7 +247,7 @@ export default function ImportExportPage() {
     setBusy(true);
     setImportMessage('');
     try {
-      const result = await json('data/import/commit', userId, {
+      const result = await json('data/import/commit', {
         method: 'POST',
         body: JSON.stringify({ csv, mapping, import_duplicates: includeDuplicates }),
       });
@@ -307,20 +285,7 @@ export default function ImportExportPage() {
           </nav>
         </header>
 
-        {!isSignedIn() && (
-          <form onSubmit={saveUserId} style={cardStyle}>
-            <label style={labelStyle}>
-              Demo user id
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Run npm run seed:dev in server/ and paste the id"
-              />
-            </label>
-            <button type="submit" style={{ ...secondaryButton, marginTop: 12 }}>Use this user</button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="import and export" />}
 
         {ready && (
           <>

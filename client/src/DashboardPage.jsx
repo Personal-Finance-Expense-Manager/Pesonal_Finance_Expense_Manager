@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Dashboard - US-20 (#34), SRS 5.8: REQ-69.
@@ -8,11 +9,10 @@ import { authHeaders, isSignedIn } from './auth.js';
  *
  * Shows, for the current budget period, total income, total expense, net
  * savings and net worth, plus top spending categories and active budgets.
- * Uses the temporary demo user id until the pages switch to sign-in (US-04).
+ * Requests carry the signed-in user's session token (Authorization: Bearer).
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const colors = {
   page: '#0b1120',
@@ -70,22 +70,14 @@ function Tile({ label, value, tone, note }) {
 const STATUS_COLOR = { ok: colors.green, warning: colors.amber, over: colors.red };
 
 export default function DashboardPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
     try {
       const response = await fetch(`${API_URL}/api/reports/dashboard`, {
-        headers: { ...authHeaders(userId) },
+        headers: { ...authHeaders() },
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not load the dashboard.');
@@ -95,22 +87,12 @@ export default function DashboardPage() {
       setData(null);
       setError(err.message);
     }
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage may be unavailable; the id still works for this visit.
-    }
-    setUserId(value);
-  }
 
   const currency = data?.currency || 'INR';
   const savings = data ? Number(data.net_savings) : 0;
@@ -144,7 +126,7 @@ export default function DashboardPage() {
                   : 'Your money at a glance.'}
               </p>
             </div>
-            {(userId || isSignedIn()) && (
+            {isSignedIn() && (
               <button
                 type="button"
                 onClick={load}
@@ -156,28 +138,13 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {!userId && !isSignedIn() && (
-            <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
-              <label style={{ display: 'block', marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-                Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
-                <input
-                  value={userIdDraft}
-                  onChange={(e) => setUserIdDraft(e.target.value)}
-                  placeholder="Paste the id printed by: npm run seed:dev"
-                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '10px 12px', border: `1px solid ${colors.inputBorder}`, borderRadius: 9, background: colors.input, color: colors.text, fontSize: 15 }}
-                />
-              </label>
-              <button type="submit" style={{ padding: '9px 14px', borderRadius: 9, border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', fontWeight: 600, cursor: 'pointer' }}>
-                Use this user
-              </button>
-            </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="the dashboard" />}
 
         {error && (
           <p role="alert" style={{ padding: 12, background: '#451a1a', color: '#fecaca', borderRadius: 8, fontSize: 14 }}>{error}</p>
         )}
 
-        {(userId || isSignedIn()) && !data && !error && <p style={{ color: colors.muted }}>Loading…</p>}
+        {isSignedIn() && !data && !error && <p style={{ color: colors.muted }}>Loading…</p>}
 
         {data && (
           <>

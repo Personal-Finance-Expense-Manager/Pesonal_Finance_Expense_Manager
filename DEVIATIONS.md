@@ -35,9 +35,20 @@ token is present. 22 integration tests assert that a token authenticates all six
 feature routers and that forged tokens, revoked sessions and suspended accounts
 are refused.
 
-**Remaining.** The interim header is retained for this sprint so that any page
-or script not yet migrated keeps working. It should be deleted when Sprint 2 is
-frozen.
+**Update (US-28).** The web client has now been fully migrated: no page, helper
+or stored key uses the pasted-id mechanism any more; every request carries
+`Authorization: Bearer`, and a signed-out visitor sees a sign-in prompt
+(`client/src/SignInRequired.jsx`). `client/test/session-auth.test.js` and
+`client/test/pages-render.test.js` fail if the mechanism returns.
+
+**Remaining.** The header is still accepted by the **server**, but only when
+`DEV_AUTH_HEADER=true` and never in production (start-up refuses it). It is kept
+because about thirty server integration suites sign their requests with it
+(`apiAs` in `test/helpers/integration.js`) and some local scripts rely on it.
+Removing it means rewriting those suites to mint real sessions
+(`test/helpers/auth.js` already does this and is used by the new suites). Until
+then it is an accepted development-only deviation, tested in
+`test/dev-auth.integration.test.js`.
 
 ---
 
@@ -222,8 +233,8 @@ changing or resetting the PIN, locks the user's other signed-in devices.
 **Known limits.**
 1. The interim `X-User-Id` development header (deviation 1) bypasses sessions
    and therefore the lock. It is development-only (`DEV_AUTH_HEADER`, never in
-   production) and the app-lock routes ignore it. Removing it, as deviation 1
-   plans, closes this.
+   production), no web page uses it any more, and the app-lock routes ignore
+   it. Removing it from the server (see deviation 1, "Remaining") closes this.
 2. A receipt link already issued (US-23, valid at most 15 minutes) is a signed
    URL and keeps working for its short life after the lock engages.
 3. Changing `APP_LOCK_SECRET` (or `JWT_SECRET` when it is the fallback)
@@ -311,3 +322,24 @@ network is not lost - is met where users actually record transactions.
 No requirement has been dropped. All 97 functional requirements and all 32
 performance, safety and security requirements remain covered by the backlog, as
 recorded in `BACKLOG.md`.
+
+---
+
+## US-26 / US-28 (administration, audit trail, backups, OWASP hardening)
+
+Numbered continuing the table above. Full detail: `docs/SECURITY.md`,
+`docs/IMPLEMENTATION_REPORT.md`.
+
+| # | Requirement | What the SRS says | What we built | Why |
+|---|---|---|---|---|
+| 11 | SEC-3 | AES-256 encryption at rest for names, emails, **transaction amounts**, notes, attachments | AES-256-GCM in the application for name, email, mobile, notes, attachment bytes and names. **Amounts are not encrypted by the application**; they rely on storage-layer encryption (Atlas / encrypted volume) plus encrypted backups. | Balances, budgets, totals, charts and reports are MongoDB aggregations over amounts (~16 `$sum` pipelines in 8 services). Field-level encryption would make them impossible in the database. Needs a decision: Queryable Encryption (Atlas/Enterprise) or a rewrite of the aggregations. |
+| 12 | SEC-3 | (implied) notes searchable | The transaction `search=` is now matched in memory after decryption | The database cannot search ciphertext. Slower for users with very many transactions. |
+| 13 | REQ-96 / SEC-11 | Audit records for transactions (SRS 5.3) | Transaction edit audit entries now store the **names of changed fields**, not old/new amounts and notes | Logging amounts/notes contradicts SEC-11 and REQ-96. One existing test was updated accordingly. |
+| 14 | SEC-1 | HTTPS / TLS 1.2+ / HSTS | Enforced and tested in the API for requests the proxy reports as HTTPS; TLS itself is in `deploy/nginx.conf.example` | TLS is terminated by the proxy, not by Node. Cannot be verified without a real certificate. |
+| 15 | SEC-7 | Rate limits | Implemented in process memory | Correct for one API instance; several instances need a shared (Redis) store. |
+| 16 | SEC-10 | Malicious file prevention | Content screening (structure, active PDF content, embedded markup) | Not an antivirus; ClamAV is infrastructure. Receipts remain on the API server's disk (deviation 5). |
+| 17 | REQ-97 | Automated encrypted backup of the database | Built-in, all collections + indexes, snapshot-consistent on a replica set, best-effort on standalone; receipt **files are not in the database backup** | Files live on disk; back up `UPLOAD_DIR` separately. |
+| 18 | SEC-13 | Access/correction/portability/erasure | Implemented for name, mobile, and the whole account; **email change is not offered** | Email is the identity and needs a verification flow (US-25 territory). Erased data leaves backups within 7 days. |
+| 19 | SEC-4 | Dev header exempt only in development | `DEV_AUTH_HEADER` now defaults to **false** in `.env.example` and production start-up refuses it. **The web client no longer uses it at all** (every page sends the JWT). | The previous example enabled it by default. It is now needed only by the server's own integration suites and scripts (see deviation 1, "Remaining"). |
+| 20 | SEC-13 | Consent at registration | `POST /api/auth/register` now **requires** `dataProcessingConsent: true` | Any teammate's script or test that registers through the API must send it. |
+

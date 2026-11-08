@@ -9,6 +9,9 @@ import { createDefaultCategories } from '../services/categoryService.js';
 import Session from '../models/Session.js';
 import authenticate from '../middleware/authenticate.js';
 import { unlockDeadline } from '../services/appLockService.js';
+import { bcryptRounds } from '../config/security.js';
+import { auditFromRequest } from '../services/auditService.js';
+import { CONSENT_PURPOSES, PRIVACY_POLICY_VERSION } from '../config/privacy.js';
 
 const router = Router();
 
@@ -161,6 +164,7 @@ router.post('/register', async (req, res) => {
       mobileNumber,
       termsAccepted,
       privacyPolicyAccepted,
+      dataProcessingConsent,
     } = req.body ?? {};
 
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 120) {
@@ -200,6 +204,14 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // SEC-13 / DPDP Act: consent to process personal data is its own explicit,
+    // affirmative choice - not implied by accepting the terms.
+    if (dataProcessingConsent !== true) {
+      return res.status(400).json({
+        message: 'You must consent to the processing of your personal data to create an account.',
+      });
+    }
+
     if (
       mobileNumber != null &&
       (typeof mobileNumber !== 'string' || mobileNumber.trim().length > 30)
@@ -230,7 +242,7 @@ router.post('/register', async (req, res) => {
       name: name.trim(),
       email: normalizedEmail,
       mobile_number: mobileNumber?.trim() || undefined,
-      password_hash: await bcrypt.hash(password, 12),
+      password_hash: await bcrypt.hash(password, bcryptRounds()),
       email_verified: false,
       email_verification_code_hash: getVerificationCodeHash(code),
       email_verification_expires_at: new Date(
@@ -241,6 +253,14 @@ router.post('/register', async (req, res) => {
       email_verification_resend_window_started_at: now,
       terms_accepted_at: now,
       privacy_policy_accepted_at: now,
+      consent: {
+        personal_data_processing: true,
+        policy_version: PRIVACY_POLICY_VERSION,
+        purposes: CONSENT_PURPOSES,
+        given_at: now,
+        given_ip: req.ip ? String(req.ip).slice(0, 64) : null,
+        withdrawn_at: null,
+      },
       status: 'active',
     });
 
@@ -278,6 +298,16 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    await auditFromRequest(req, {
+      userId: user._id,
+      actorRole: 'user',
+      category: 'auth',
+      action: 'auth.register',
+      entityType: 'user',
+      entityId: user._id,
+      metadata: { consent_policy_version: PRIVACY_POLICY_VERSION },
+    });
+
     return res.status(201).json({
       message: 'Registration started. Check your email for the verification code.',
     });
@@ -312,6 +342,7 @@ router.post('/verify-email', async (req, res) => {
     }).select('+email_verification_code_hash +email_verification_expires_at');
 
     if (!user) {
+      await auditFromRequest(req, { category: 'auth', outcome: 'failure', action: 'auth.verify_email_failed', metadata: { reason: 'no_pending_account' } });
       return res.status(400).json({
         message: 'Invalid or expired verification code.',
       });
@@ -335,6 +366,7 @@ router.post('/verify-email', async (req, res) => {
     if (!codesMatch(code, user.email_verification_code_hash)) {
       user.email_verification_attempts += 1;
       await user.save();
+      await auditFromRequest(req, { userId: user._id, category: 'auth', outcome: 'failure', action: 'auth.verify_email_failed', metadata: { reason: 'wrong_code' } });
 
       if (user.email_verification_attempts >= MAX_VERIFICATION_ATTEMPTS) {
         return res.status(429).json({
@@ -353,6 +385,8 @@ router.post('/verify-email', async (req, res) => {
     user.email_verification_attempts = 0;
 
     await user.save();
+
+    await auditFromRequest(req, { userId: user._id, actorRole: 'user', category: 'auth', action: 'auth.email_verified' });
 
     return res.status(200).json({
       message: 'Email verified successfully.',
@@ -518,7 +552,9 @@ router.post('/login', async (req, res) => {
     }).select('+password_hash');
 
     // Use a generic response to avoid disclosing account details.
-    if (!user || user.status !== 'active') {
+    // (A suspended account is told so only after proving the password, below.)
+    if (!user || (user.status !== 'active' && user.status !== 'suspended')) {
+      await auditFromRequest(req, { category: 'auth', outcome: 'failure', action: 'auth.login_failed', metadata: { reason: 'unknown_or_closed_account' } });
       return res.status(401).json({
         message: 'Invalid email or password.',
       });
@@ -531,6 +567,7 @@ router.post('/login', async (req, res) => {
       user.sign_in_locked_until &&
       user.sign_in_locked_until.getTime() > now.getTime()
     ) {
+      await auditFromRequest(req, { userId: user._id, category: 'auth', outcome: 'denied', action: 'auth.login_failed', metadata: { reason: 'account_locked' } });
       return res.status(423).json({
         message: 'Sign-in is temporarily locked. Try again later.',
       });
@@ -573,6 +610,8 @@ router.post('/login', async (req, res) => {
           );
         }
 
+        await auditFromRequest(req, { userId: user._id, category: 'auth', outcome: 'denied', action: 'auth.account_locked', metadata: { failed_attempts: 5 } });
+
         return res.status(423).json({
           message:
             'Sign-in is temporarily locked after repeated failures. Try again in 15 minutes.',
@@ -581,13 +620,26 @@ router.post('/login', async (req, res) => {
 
       await user.save();
 
+      await auditFromRequest(req, { userId: user._id, category: 'auth', outcome: 'failure', action: 'auth.login_failed', metadata: { reason: 'wrong_password', failed_attempts: user.failed_sign_in_attempts } });
+
       return res.status(401).json({
         message: 'Invalid email or password.',
       });
     }
 
+    // US-26 (REQ-94): a suspended account cannot sign in. The person is told so
+    // only once the password is right, so this reveals nothing to a stranger.
+    if (user.status === 'suspended') {
+      await auditFromRequest(req, { userId: user._id, category: 'auth', outcome: 'denied', action: 'auth.login_failed', metadata: { reason: 'account_suspended' } });
+      return res.status(403).json({
+        message: 'This account has been suspended. Contact support.',
+        code: 'ACCOUNT_SUSPENDED',
+      });
+    }
+
     // A valid password is not enough until email verification is complete.
     if (!user.email_verified) {
+      await auditFromRequest(req, { userId: user._id, category: 'auth', outcome: 'denied', action: 'auth.login_failed', metadata: { reason: 'email_unverified' } });
       return res.status(403).json({
         message: 'Verify your email address before signing in.',
       });
@@ -598,6 +650,7 @@ router.post('/login', async (req, res) => {
     // US-05: signing in with the password proves identity, so it also clears
     // any run of wrong app-lock PINs.
     user.app_lock_failed_attempts = 0;
+    user.last_sign_in_at = now;
     await user.save();
 
     // Every JWT gets a unique ID backed by a revocable database session.
@@ -622,7 +675,10 @@ router.post('/login', async (req, res) => {
       // US-05: a password sign-in starts unlocked; the PIN is asked for when
       // the app has been in the background for two minutes (REQ-11).
       app_unlocked_until: user.app_lock_enabled ? unlockDeadline() : null,
+      last_activity_at: now,
     });
+
+    await auditFromRequest(req, { userId: user._id, actorRole: user.role, category: 'auth', action: 'auth.login' });
 
     return res.status(200).json({
       message: 'Sign-in successful.',
@@ -643,6 +699,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// GET /api/auth/me - who the token belongs to, and whether they are an administrator.
+// The client uses the role only to decide which screens to show; every admin
+// route re-checks the role on the server.
+router.get('/me', authenticate, (req, res) => {
+  res.json({
+    data: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role || 'user',
+      consent_given: Boolean(req.user.consent?.personal_data_processing) && !req.user.consent?.withdrawn_at,
+    },
+  });
+});
+
 // POST /api/auth/logout
 // Revoke the current session on the server.
 // US-05: allowed while the app is locked, so a user who forgot the PIN can
@@ -654,6 +725,8 @@ router.post('/logout', (req, res, next) => {
   try {
     req.authSession.revoked_at = new Date();
     await req.authSession.save();
+
+    await auditFromRequest(req, { category: 'auth', action: 'auth.logout' });
 
     return res.status(200).json({
       message: 'Signed out successfully.',
@@ -716,6 +789,8 @@ router.post('/password-reset/request', async (req, res) => {
     user.password_reset_token_hash = resetTokenHash;
     user.password_reset_expires_at = expiresAt;
     await user.save();
+
+    await auditFromRequest(req, { userId: user._id, category: 'auth', action: 'auth.password_reset_requested' });
 
     const resetUrl = new URL(
       '/reset-password',
@@ -827,12 +902,13 @@ router.post('/password-reset/confirm', async (req, res) => {
     }).select('+password_reset_token_hash +password_reset_expires_at');
 
     if (!user) {
+      await auditFromRequest(req, { category: 'auth', outcome: 'failure', action: 'auth.password_reset_failed', metadata: { reason: 'invalid_or_expired_link' } });
       return res.status(400).json({
         message: 'Invalid or expired password-reset link.',
       });
     }
 
-    const newPasswordHash = await bcrypt.hash(newPassword, 12);
+    const newPasswordHash = await bcrypt.hash(newPassword, bcryptRounds());
 
     // The conditional update prevents the same reset token from being
     // successfully consumed twice.
@@ -869,6 +945,8 @@ router.post('/password-reset/confirm', async (req, res) => {
       { user_id: updatedUser._id, revoked_at: null },
       { $set: { revoked_at: now } }
     );
+
+    await auditFromRequest(req, { userId: updatedUser._id, category: 'auth', action: 'auth.password_reset_completed' });
 
     return res.status(200).json({
       message: 'Password reset successfully. Please sign in again.',

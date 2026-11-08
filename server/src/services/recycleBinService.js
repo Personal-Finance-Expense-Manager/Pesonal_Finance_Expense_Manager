@@ -88,11 +88,19 @@ export async function purgeExpired(now = new Date()) {
 
   await recordAudit([
     ...transactions.map((t) => ({
-      userId: t.user_id, entityType: 'transaction', entityId: t._id, action: 'purge',
+      userId: t.user_id, category: 'bulk_delete', entityType: 'transaction', entityId: t._id, action: 'purge',
     })),
     ...transfers.map((t) => ({
-      userId: t.user_id, entityType: 'transfer', entityId: t._id, action: 'purge',
+      userId: t.user_id, category: 'bulk_delete', entityType: 'transfer', entityId: t._id, action: 'purge',
     })),
+    ...(transactionIds.length + transferIds.length
+      ? [{
+          category: 'bulk_delete',
+          action: 'purge.batch',
+          entityType: 'recycle_bin',
+          metadata: { transactions: transactionIds.length, transfers: transferIds.length, attachments },
+        }]
+      : []),
   ]);
 
   return { transactions: transactionIds.length, transfers: transferIds.length, attachments };

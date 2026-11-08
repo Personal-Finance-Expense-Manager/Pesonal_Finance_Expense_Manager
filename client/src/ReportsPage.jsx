@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Period reports - US-22 (#51), SRS 5.8: REQ-73 to REQ-78.
@@ -12,7 +13,6 @@ import { authHeaders, isSignedIn } from './auth.js';
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const colors = {
   page: '#0b1120',
@@ -124,15 +124,6 @@ function Change({ change, invert = false }) {
 }
 
 export default function ReportsPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
-
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(endOfMonth);
   const [comparing, setComparing] = useState(false);
@@ -150,11 +141,11 @@ export default function ReportsPage() {
   }, [from, to, comparing, compare]);
 
   const load = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
     setLoading(true);
     try {
       const response = await fetch(`${API_URL}/api/reports/period?${query()}`, {
-        headers: { ...authHeaders(userId) },
+        headers: { ...authHeaders() },
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not build the report.');
@@ -166,7 +157,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, query]);
+  }, [query]);
 
   useEffect(() => {
     load();
@@ -184,7 +175,7 @@ export default function ReportsPage() {
     setError('');
     try {
       const response = await fetch(`${API_URL}/api/reports/period.${format}?${query()}`, {
-        headers: { ...authHeaders(userId) },
+        headers: { ...authHeaders() },
       });
 
       if (!response.ok) {
@@ -212,7 +203,7 @@ export default function ReportsPage() {
     }
   }
 
-  const ready = Boolean(userId) || isSignedIn();
+  const ready = isSignedIn();
   const hasRows = data && data.by_category.length > 0;
 
   // The table follows the data, not the checkbox. Ticking "compare" flips the
@@ -239,33 +230,7 @@ export default function ReportsPage() {
           </nav>
         </header>
 
-        {/* Hidden once signed in: the session identifies the user (US-25). */}
-        {!isSignedIn() && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const value = userIdDraft.trim();
-              try {
-                localStorage.setItem(DEV_USER_KEY, value);
-              } catch {
-                // Storage can be unavailable in a private window.
-              }
-              setUserId(value);
-            }}
-            style={cardStyle}
-          >
-            <label style={labelStyle}>
-              Demo user id
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Run npm run seed:dev in server/ and paste the id"
-              />
-            </label>
-            <button type="submit" style={{ ...buttonStyle, marginTop: 12 }}>Use this user</button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="reports" />}
 
         {ready && (
           <div style={cardStyle}>
@@ -328,8 +293,6 @@ export default function ReportsPage() {
         )}
 
         {error && <p style={{ ...cardStyle, borderColor: '#7f1d1d', color: colors.red, padding: 14 }}>{error}</p>}
-
-        {!ready && <p style={{ color: colors.muted }}>Enter a demo user id above to build a report.</p>}
 
         {ready && loading && !data && <p style={{ color: colors.muted }}>Building the report...</p>}
 

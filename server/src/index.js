@@ -6,15 +6,31 @@ import { startPurgeJob } from './jobs/purgeJob.js';
 import { startBudgetJob } from './jobs/budgetJob.js';
 import { startRecurringJob } from './jobs/recurringJob.js';
 import { startBillReminderJob } from './jobs/billReminderJob.js';
+import { startBackupScheduler } from './services/backupScheduler.js';
+import { assertEnvironment } from './config/security.js';
+import { keyRing } from './utils/crypto.js';
 
 const PORT = process.env.PORT || 5000;
 
 async function start() {
+  // US-28 SEC-12: refuse to run production with missing or placeholder secrets,
+  // and stop early (in every environment) if the encryption key is absent.
+  assertEnvironment();
+  keyRing();
+
+  if (process.env.DEV_AUTH_HEADER === 'true') {
+    console.warn('[config] DEV_AUTH_HEADER is on: requests may claim any user with X-User-Id. Development only.');
+  }
+
   const connected = await connectDB();
 
   if (connected) {
     startPurgeJob();
     startBudgetJob();
+
+    // US-26 REQ-97: a backup every 24 hours, expired ones removed. Needs BACKUP_ENCRYPTION_KEY.
+    if (process.env.BACKUP_ENCRYPTION_KEY) startBackupScheduler();
+    else console.warn('[backup] BACKUP_ENCRYPTION_KEY is not set: automated backups are OFF.');
 
     // US-16 / US-17. SCHEDULER_ENABLED=false turns them off (for example on a
     // second instance, or while debugging); they are safe to run on several.

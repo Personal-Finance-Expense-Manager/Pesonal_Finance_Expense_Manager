@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
-import { getToken } from './auth.js';
+import { authHeaders, isSignedIn } from './auth.js';
+import { SignedOutPage } from './SignInRequired.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -70,7 +71,7 @@ function getError(data) {
   return data?.message || data?.error || 'Something went wrong.';
 }
 
-export default function SavingsGoalsPage() {
+function SavingsGoalsContent() {
   const [goals, setGoals] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,13 +101,11 @@ export default function SavingsGoalsPage() {
   const [editingId, setEditingId] = useState(null);
 
   const request = useCallback(async (path, options = {}) => {
-    const token = getToken();
-
     const response = await fetch(`${API_URL}/api${path}`, {
       ...options,
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        Authorization: `Bearer ${token}`,
+        ...authHeaders(),
         ...options.headers,
       },
     });
@@ -793,4 +792,9 @@ export default function SavingsGoalsPage() {
       </div>
     </main>
   );
+}
+
+export default function SavingsGoalsPage() {
+  if (!isSignedIn()) return <SignedOutPage title="Savings goals" what="savings goals" />;
+  return <SavingsGoalsContent />;
 }

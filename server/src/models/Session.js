@@ -24,6 +24,14 @@ const sessionSchema = new mongoose.Schema(
       required: true,
     },
 
+    // US-28 (SEC-8): the last time a person (not a background timer) used this
+    // session. Anything idle for longer than the limit (30 minutes) is revoked
+    // by the server, so the timeout does not depend on the browser's timer.
+    last_activity_at: {
+      type: Date,
+      default: Date.now,
+    },
+
     // Set when the user signs out or their sessions are invalidated
     revoked_at: {
       type: Date,

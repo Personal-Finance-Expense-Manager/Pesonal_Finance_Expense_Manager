@@ -1,19 +1,18 @@
 /**
  * Session handling for the client - US-25 (#61), SRS 5.10: REQ-93.
  *
- * Sign-in stores the token here; every page sends it on every request. The
- * server then decides who the caller is from the session, never from an id the
- * client supplies.
+ * Sign-in stores the token here; every page sends it on every request as
+ * `Authorization: Bearer <token>`. The server then decides who the caller is
+ * from the session, never from an id the client supplies.
  *
- * The X-User-Id fallback is the Sprint 1 interim: the feature screens were
- * built before sign-in existed, so they identified the user with a pasted id.
- * It only works when the server is running with DEV_AUTH_HEADER=true, and it
- * is used only when there is no token. It disappears with the demo-user boxes.
+ * (US-28: the early Sprint 1 interim, where feature pages identified the user by
+ * a pasted id, has been removed from the client. The server's own development-only
+ * switch, DEV_AUTH_HEADER, is a separate mechanism, off by default, and is never
+ * used by the web client.)
  */
 
 const TOKEN_KEY = 'pfem_token';
 const USER_KEY = 'pfem_user';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 /** Fired when the signed-in session starts or ends (US-05: the app lock follows it). */
 export const SESSION_CHANGED_EVENT = 'pfem:session-changed';
@@ -71,15 +70,10 @@ export function isSignedIn() {
 }
 
 /**
- * Headers that identify the caller.
- *
- * Prefers the session token. Falls back to the development header only when
- * there is no token, so a signed-in user is never identified by a pasted id.
+ * Headers that identify the caller: the session token, nothing else. With no
+ * session there are no credentials, and the server answers 401.
  */
-export function authHeaders(devUserId) {
+export function authHeaders() {
   const token = getToken();
-  if (token) return { Authorization: `Bearer ${token}` };
-
-  const fallback = (devUserId ?? read(DEV_USER_KEY)).trim();
-  return fallback ? { 'X-User-Id': fallback } : {};
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }

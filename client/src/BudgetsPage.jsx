@@ -1,9 +1,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const PERIOD_LABELS = {
   monthly: 'Monthly',
@@ -312,15 +312,7 @@ function BudgetCard({ budget, onEdit, onDelete, busy }) {
 }
 
 export default function BudgetsPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
 
-  const [userIdDraft, setUserIdDraft] = useState(userId);
   const [budgets, setBudgets] = useState(null);
   const [categories, setCategories] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -340,7 +332,7 @@ export default function BudgetsPage() {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...authHeaders(userId),
+        ...authHeaders(),
       },
     });
 
@@ -356,10 +348,10 @@ export default function BudgetsPage() {
     }
 
     return data;
-  }, [userId]);
+  }, []);
 
   const load = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
 
     try {
       const [list, cats, recent] = await Promise.all([
@@ -381,25 +373,12 @@ export default function BudgetsPage() {
       setBudgets([]);
       setError(err.message);
     }
-  }, [api, showPast, userId]);
+  }, [api, showPast]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function saveUserId(event) {
-    event.preventDefault();
-
-    const value = userIdDraft.trim();
-
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage may be unavailable.
-    }
-
-    setUserId(value);
-  }
 
   function startEdit(budget) {
     setEditingId(budget.id);
@@ -563,27 +542,7 @@ export default function BudgetsPage() {
           </p>
         </header>
 
-        {!isSignedIn() && (
-          <form
-            onSubmit={saveUserId}
-            style={{ ...cardStyle, borderStyle: 'dashed' }}
-          >
-            <label style={{ ...labelStyle, marginBottom: 8 }}>
-              Demo user id
-
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Paste the id printed by: npm run seed:dev"
-              />
-            </label>
-
-            <button type="submit" style={secondaryButton}>
-              Use this user
-            </button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="budgets" />}
 
         {newAlerts.map((alert, index) => (
           <div
@@ -636,7 +595,7 @@ export default function BudgetsPage() {
           </p>
         )}
 
-        {(userId || isSignedIn()) && (
+        {isSignedIn() && (
           <>
             <form onSubmit={handleSave} style={cardStyle} noValidate>
               <h2 style={{ margin: '0 0 16px', fontSize: 18 }}>

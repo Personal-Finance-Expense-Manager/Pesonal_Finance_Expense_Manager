@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 import { Badge, FieldError } from './PageParts.jsx';
 import {
-  DEV_USER_KEY, colors, cardStyle, dangerButton, inputStyle, labelStyle,
+  colors, cardStyle, dangerButton, inputStyle, labelStyle,
   loadChoices, makeApi, money, mutedLink, niceDate, primaryButton, secondaryButton,
 } from './pageKit.js';
 import {
@@ -99,10 +100,6 @@ function RuleCard({ rule, busy, onEdit, onLoadDetail, onPause, onResume, onDelet
 }
 
 export default function RecurringPage() {
-  const [userId, setUserId] = useState(() => {
-    try { return localStorage.getItem(DEV_USER_KEY) || ''; } catch { return ''; }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
   const [rules, setRules] = useState(null);
   const [filter, setFilter] = useState('all');
   const [choices, setChoices] = useState({ accounts: [], categories: [] });
@@ -114,8 +111,8 @@ export default function RecurringPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const api = useMemo(() => makeApi(userId), [userId]);
-  const ready = Boolean(userId) || isSignedIn();
+  const api = useMemo(() => makeApi(), []);
+  const ready = isSignedIn();
 
   const load = useCallback(async () => {
     if (!ready) return;
@@ -134,13 +131,6 @@ export default function RecurringPage() {
   }, [api, filter, ready]);
 
   useEffect(() => { load(); }, [load]);
-
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try { localStorage.setItem(DEV_USER_KEY, value); } catch { /* storage may be unavailable */ }
-    setUserId(value);
-  }
 
   const set = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
 
@@ -226,15 +216,7 @@ export default function RecurringPage() {
           </div>
         </header>
 
-        {!ready && (
-          <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
-            <label style={{ ...labelStyle, marginBottom: 8 }}>
-              Demo user id
-              <input style={inputStyle} value={userIdDraft} onChange={(e) => setUserIdDraft(e.target.value)} placeholder="Paste the id printed by: npm run seed:dev" />
-            </label>
-            <button type="submit" style={secondaryButton}>Use this user</button>
-          </form>
-        )}
+        {!ready && <SignInRequired what="recurring transactions" />}
 
         {error && <div role="alert" style={{ padding: 12, marginBottom: 14, borderRadius: 8, background: '#451a1a', color: '#fecaca', fontSize: 14 }}>{error}</div>}
         {message && <div role="status" style={{ padding: 12, marginBottom: 14, borderRadius: 8, background: '#123524', color: '#bbf7d0', fontSize: 14 }}>{message}</div>}

@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Accounts and wallets page - US-06 (#20), SRS 5.2, REQ-13 to REQ-18.
  *
  * Open it at http://localhost:5173/#/accounts
  *
- * Until sign-in (US-04) is merged there is no logged-in user, so the page
- * asks for a demo user id (from `npm run seed:dev` in server/) and sends it
- * in an X-User-Id header. When US-04 lands, replace authHeaders() with the
- * real token and remove the demo box.
+ * Requests carry the signed-in user's session token (Authorization: Bearer).
+ * A signed-out visitor is asked to sign in.
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const TYPE_LABELS = {
   cash: 'Cash',
@@ -197,14 +195,6 @@ function CardPosition({ card, currency }) {
 // ---------------------------------------------------------------------------
 
 export default function AccountsPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
 
   // null = not loaded yet
   const [accounts, setAccounts] = useState(null);
@@ -230,7 +220,7 @@ export default function AccountsPage() {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...authHeaders(userId),
+        ...authHeaders(),
         ...(options.headers || {}),
       },
     });
@@ -243,10 +233,10 @@ export default function AccountsPage() {
       throw err;
     }
     return data;
-  }, [userId]);
+  }, []);
 
   const loadAccounts = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
     try {
       const data = await api(`?includeArchived=${showArchived}`);
       setAccounts(data.accounts);
@@ -256,7 +246,7 @@ export default function AccountsPage() {
       setAccounts([]);
       setError(err.message);
     }
-  }, [api, showArchived, userId]);
+  }, [api, showArchived]);
 
   useEffect(() => {
     loadAccounts();
@@ -267,16 +257,6 @@ export default function AccountsPage() {
     setError('');
   }
 
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage can be unavailable (private window); the value still works for this visit.
-    }
-    setUserId(value);
-  }
 
   // ---- create (REQ-13, REQ-14, REQ-15) -----------------------------------
 
@@ -419,22 +399,7 @@ export default function AccountsPage() {
           </p>
         </header>
 
-        {/* Demo user - temporary until sign-in (US-04) is merged */}
-        {/* Hidden once signed in: the session identifies the user (US-25). */}
-        {!isSignedIn() && (
-          <form onSubmit={saveUserId} style={{ ...cardStyle, borderStyle: 'dashed' }}>
-            <label style={{ ...labelStyle, marginBottom: 8 }}>
-              Demo user id <span style={{ color: colors.muted, fontWeight: 400 }}>(temporary, until sign-in is ready)</span>
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Paste the id printed by: npm run seed:dev"
-              />
-            </label>
-            <button type="submit" style={button('secondary')}>Use this user</button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="your accounts" />}
 
         {message && (
           <p role="status" style={{ padding: 12, background: '#123524', color: '#bbf7d0', borderRadius: 8, fontSize: 14 }}>
@@ -447,7 +412,7 @@ export default function AccountsPage() {
           </p>
         )}
 
-        {(userId || isSignedIn()) && (
+        {isSignedIn() && (
           <>
             {netWorth && <NetWorthCard netWorth={netWorth} />}
 

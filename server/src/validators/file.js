@@ -77,6 +77,49 @@ function extensionOf(name) {
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
 }
 
+export const UNSAFE_CONTENT_MESSAGE =
+  'That file is damaged or contains active content, so it cannot be accepted. ' + ATTACHMENT_RULES_MESSAGE;
+
+// Markup or script smuggled inside an image or PDF (a "polyglot" file).
+const EMBEDDED_MARKUP = /<\s*(script|iframe|object|embed|html|svg)\b|<\?php|javascript\s*:/i;
+
+// PDF features that run code, open other resources or hide payloads.
+const PDF_ACTIVE_CONTENT =
+  /\/(JavaScript|JS|OpenAction|AA|Launch|EmbeddedFile|EmbeddedFiles|RichMedia|XFA|SubmitForm|ImportData|GoToR|GoToE)\b/i;
+
+// PDF names may hide a letter as #XX ("/J#61vaScript"); undo that before scanning.
+const unescapePdfNames = (text) => text.replace(/#([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+/**
+ * Look inside the file (SEC-10). Returns null when it looks safe, otherwise a
+ * reason. This is a screen for the common attacks, not an antivirus engine -
+ * see docs/SECURITY.md for what it does and does not promise.
+ */
+export function unsafeContentReason(buffer, mime) {
+  const text = buffer.toString('latin1');
+
+  if (EMBEDDED_MARKUP.test(text)) return 'embedded_markup';
+
+  if (mime === 'image/jpeg') {
+    // A JPEG ends with the End-Of-Image marker (trailing zero padding is tolerated).
+    let end = buffer.length;
+    while (end > 0 && buffer[end - 1] === 0) end -= 1;
+    if (end < 4 || buffer[end - 2] !== 0xff || buffer[end - 1] !== 0xd9) return 'jpeg_truncated';
+  }
+
+  if (mime === 'image/png') {
+    if (buffer.length < 33 || buffer.toString('latin1', 12, 16) !== 'IHDR') return 'png_header';
+    if (!buffer.subarray(buffer.length - 12).toString('latin1').includes('IEND')) return 'png_truncated';
+  }
+
+  if (mime === 'application/pdf') {
+    if (!buffer.subarray(Math.max(0, buffer.length - 1024)).toString('latin1').includes('%%EOF')) return 'pdf_truncated';
+    if (PDF_ACTIVE_CONTENT.test(unescapePdfNames(text))) return 'pdf_active_content';
+  }
+
+  return null;
+}
+
 /**
  * Check an uploaded file. Returns { data } or { status, message }.
  *
@@ -107,6 +150,10 @@ export function validateAttachment({ buffer, fileName, mimeType }) {
 
   if (!rules || detected !== declared || !rules.extensions.includes(extensionOf(name))) {
     return { status: 415, message: `That file type is not supported. ${ATTACHMENT_RULES_MESSAGE}` };
+  }
+
+  if (unsafeContentReason(buffer, declared)) {
+    return { status: 422, message: UNSAFE_CONTENT_MESSAGE };
   }
 
   return {

@@ -443,6 +443,9 @@ test('an edit writes an audit entry with only the changed fields; a no-op edit w
   const entries = await AuditLog.find({ entity_id: expense.id, action: 'update' }).lean();
   assert.equal(entries.length, 1);
   assert.equal(String(entries[0].user_id), user.id);
-  assert.deepEqual(entries[0].old_value, { amount: '500.00', note: '' });
-  assert.deepEqual(entries[0].new_value, { amount: '800.00', note: 'bigger' });
+  // US-28 (SEC-11): the trail names the fields that changed, never the amounts or notes.
+  assert.deepEqual(entries[0].new_value, { changed_fields: ['amount', 'note'] });
+  const recorded = JSON.stringify([entries[0].old_value, entries[0].new_value, entries[0].metadata]);
+  assert.ok(!recorded.includes('bigger'), 'the note is not recorded');
+  assert.ok(!/800|500/.test(recorded), 'no amount is recorded');
 });

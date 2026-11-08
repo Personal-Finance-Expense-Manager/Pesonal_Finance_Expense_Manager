@@ -1,3 +1,4 @@
+import { bcryptRounds } from '../config/security.js';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
@@ -42,7 +43,7 @@ export const MAX_PIN_ATTEMPTS = 5;
 export const MAX_BIOMETRIC_DEVICES = 5;
 
 const PIN_PATTERN = /^\d{4}$/;
-const BCRYPT_WORK_FACTOR = 12;
+const BCRYPT_WORK_FACTOR = bcryptRounds();
 
 /** An error that carries the status and JSON body the client should see. */
 export class LockError extends Error {

@@ -10,9 +10,13 @@ import { signAttachment, verifyAttachment, SIGNED_URL_TTL_SECONDS } from '../src
 
 process.env.ATTACHMENT_URL_SECRET = 'a'.repeat(40);
 
-const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
-const PDF = Buffer.from('%PDF-1.7\n%');
+const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0xff, 0xd9]);
+const PNG = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]),
+  Buffer.from('IHDR'), Buffer.alloc(17, 0),
+  Buffer.from([0, 0, 0, 0]), Buffer.from('IEND'), Buffer.from([0xae, 0x42, 0x60, 0x82]),
+]);
+const PDF = Buffer.from('%PDF-1.7\n%%EOF\n');
 const EXE = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00]);
 
 // ---------------------------------------------------------------------------
@@ -35,6 +39,7 @@ test('REQ-79 a JPG, a PNG and a PDF are each accepted', () => {
 test('REQ-79 a file of exactly 5 MB is accepted', () => {
   const buffer = Buffer.alloc(MAX_ATTACHMENT_BYTES);
   PDF.copy(buffer);
+  Buffer.from('\n%%EOF\n').copy(buffer, buffer.length - 7);
   const result = validateAttachment({ buffer, fileName: 'big.pdf', mimeType: 'application/pdf' });
   assert.ok(result.data);
   assert.equal(result.data.sizeBytes, MAX_ATTACHMENT_BYTES);

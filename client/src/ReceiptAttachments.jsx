@@ -56,7 +56,7 @@ const smallButton = {
   fontSize: 12,
 };
 
-export default function ReceiptAttachments({ transactionId, userId, onChange }) {
+export default function ReceiptAttachments({ transactionId, onChange }) {
   const [items, setItems] = useState([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,7 +65,7 @@ export default function ReceiptAttachments({ transactionId, userId, onChange }) 
   useEffect(() => {
     let cancelled = false;
 
-    call(`transactions/${transactionId}/attachments`, userId)
+    call(`transactions/${transactionId}/attachments`)
       .then((result) => {
         if (!cancelled) setItems(result.data || []);
       })
@@ -76,7 +76,7 @@ export default function ReceiptAttachments({ transactionId, userId, onChange }) 
     return () => {
       cancelled = true;
     };
-  }, [transactionId, userId, reload]);
+  }, [transactionId, reload]);
 
   async function add(event) {
     const files = Array.from(event.target.files || []);
@@ -97,7 +97,7 @@ export default function ReceiptAttachments({ transactionId, userId, onChange }) 
     setBusy(true);
     try {
       for (const file of files) {
-        await uploadAttachment(transactionId, file, userId);
+        await uploadAttachment(transactionId, file);
       }
       setMessage(files.length === 1 ? 'Attachment added.' : `${files.length} attachments added.`);
     } catch (error) {
@@ -111,7 +111,7 @@ export default function ReceiptAttachments({ transactionId, userId, onChange }) 
 
   // Signed URLs expire after a few minutes, so ask for a fresh one on click.
   async function freshUrls(id) {
-    const result = await call(`attachments/${id}`, userId);
+    const result = await call(`attachments/${id}`);
     return result.data;
   }
 
@@ -146,7 +146,7 @@ export default function ReceiptAttachments({ transactionId, userId, onChange }) 
     if (!window.confirm(`Delete "${item.file_name}"? This cannot be undone.`)) return;
     setMessage('');
     try {
-      await call(`attachments/${item.id}`, userId, { method: 'DELETE' });
+      await call(`attachments/${item.id}`, { method: 'DELETE' });
       setMessage('Attachment deleted.');
     } catch (error) {
       setMessage(error.message);
