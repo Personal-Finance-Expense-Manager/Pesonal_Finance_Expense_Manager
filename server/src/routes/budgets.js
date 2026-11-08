@@ -1,3 +1,4 @@
+import { softDeleteResource } from '../services/resourceRecoveryService.js';
 
 import { Router } from 'express';
 import mongoose from 'mongoose';
@@ -359,7 +360,7 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(404).json({ message: 'Budget not found.' });
     }
 
-    const deleted = await Budget.findOneAndDelete({
+    const deleted = await Budget.findOne({
       _id: req.params.id,
       user_id: req.user.id,
     });
@@ -367,6 +368,8 @@ router.delete('/:id', async (req, res, next) => {
     if (!deleted) {
       return res.status(404).json({ message: 'Budget not found.' });
     }
+
+    await softDeleteResource(deleted);
 
     // Deleting a budget never deletes its transactions.
     return res.json({

@@ -154,7 +154,7 @@ export async function eraseAccount(userId, { password, confirm }, ip) {
   });
 
   // Files first: they are found through the records that are about to go.
-  const files = await Attachment.find({ user_id: user._id }).select('object_key').lean();
+  const files = await Attachment.find({ user_id: user._id }).withDeleted().select('object_key').lean();
   for (const file of files) await deleteObject(file.object_key).catch(() => {});
 
   const deleted = {};

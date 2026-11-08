@@ -78,7 +78,7 @@ function BillCard({ bill, accounts, busy, onEdit, onPay, onDelete }) {
 
       {confirming && (
         <div role="alertdialog" aria-label="Confirm delete" style={{ marginTop: 10, padding: 12, borderRadius: 9, background: '#451a1a', fontSize: 14 }}>
-          Delete this reminder?{bill.status === 'paid' ? ' The expense it recorded is kept.' : ''}
+          Move "{bill.name}" to Recovery for 30 days?{bill.status === 'paid' ? ' The expense it recorded is kept.' : ''}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button type="button" style={dangerButton} disabled={busy} onClick={() => { setConfirming(false); onDelete(bill); }}>Yes, delete</button>
             <button type="button" style={secondaryButton} onClick={() => setConfirming(false)}>Keep it</button>

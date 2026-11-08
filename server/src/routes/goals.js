@@ -1,3 +1,4 @@
+import { sendApiError } from '../utils/apiError.js';
 import { Router } from 'express';
 import Goal from '../models/Goal.js';
 import {
@@ -21,7 +22,7 @@ router.get('/', async (req, res, next) => {
     const goals = await listGoals(req.user.id);
     return res.json({ goals });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 
@@ -44,7 +45,7 @@ router.post('/', async (req, res, next) => {
       goal,
     });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 
@@ -54,7 +55,7 @@ router.get('/:id', async (req, res, next) => {
     const goal = await getGoal(req.user.id, req.params.id);
     return res.json({ goal });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 
@@ -99,7 +100,7 @@ router.patch('/:id', async (req, res, next) => {
       goal,
     });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 
@@ -117,7 +118,7 @@ router.post('/:id/contributions', async (req, res, next) => {
       goal,
     });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 
@@ -135,7 +136,7 @@ router.post('/:id/withdrawals', async (req, res, next) => {
       goal,
     });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 
@@ -152,11 +153,11 @@ router.delete('/:id', async (req, res, next) => {
     const result = await deleteGoal(req.user.id, req.params.id);
 
     return res.json({
-      message: 'Savings goal deleted and contributions refunded.',
+      message: 'Savings goal moved to recovery for 30 days.',
       ...result,
     });
   } catch (error) {
-    return next(error);
+    return sendApiError(res, next, error);
   }
 });
 

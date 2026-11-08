@@ -1,3 +1,4 @@
+import recoverable from './plugins/recoverable.js';
 import mongoose from 'mongoose';
 import { isPositiveMoney } from '../utils/money.js';
 
@@ -38,5 +39,7 @@ const reminderSchema = new mongoose.Schema({
 
 reminderSchema.index({ user_id: 1, due_date: 1, status: 1 });
 reminderSchema.index({ status: 1, due_date: 1 });
+
+reminderSchema.plugin(recoverable);
 
 export default mongoose.models.Reminder || mongoose.model('Reminder', reminderSchema);

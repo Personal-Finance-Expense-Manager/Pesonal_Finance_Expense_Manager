@@ -1,3 +1,4 @@
+import { withFinancialOperation, saveOperationIntent } from './financialOperationService.js';
 import mongoose from 'mongoose';
 import Decimal from 'decimal.js';
 import Account from '../models/Account.js';
@@ -27,8 +28,9 @@ import { resolveTagIds } from './transactionService.js';
  * records on every read, so they reflect an import exactly as they would the
  * same entries made by hand (REQ-86).
  *
- * A commit is all-or-nothing (SAF-5): if any write fails, everything this
- * import wrote is removed again before the error is returned.
+ * Standalone MongoDB uses compensating cleanup on failure (SAF-5).
+ * This is not crash-safe atomicity: readers may see intermediate writes and
+ * a database outage can prevent cleanup. Never promise an ACID guarantee.
  */
 
 /** Fields a file can be mapped to. */
@@ -354,6 +356,10 @@ export async function previewImport(userId, { csv, mapping } = {}) {
  * their row numbers are listed in `importDuplicates`.
  */
 export async function commitImport(userId, { csv, mapping, importDuplicates = [] } = {}, { ip } = {}) {
+  return withFinancialOperation(userId, 'import', () => commitImportImpl(userId, { csv, mapping, importDuplicates }, { ip }));
+}
+
+async function commitImportImpl(userId, { csv, mapping, importDuplicates }, { ip }) {
   const result = await analyse(userId, csv, mapping);
 
   if (result.needsMapping) throw new ApiError(400, 'Choose which column holds each field.');
@@ -378,8 +384,11 @@ export async function commitImport(userId, { csv, mapping, importDuplicates = []
     const transferRows = toWrite.filter((r) => r.data.type === 'transfer');
 
     if (transactionRows.length) {
+      written.transactions = transactionRows.map(() => new mongoose.Types.ObjectId());
+      await saveOperationIntent(written);
       const docs = await Transaction.insertMany(
-        transactionRows.map(({ data }) => ({
+        transactionRows.map(({ data }, index) => ({
+          _id: written.transactions[index],
           user_id: userId,
           account_id: data.account_id,
           category_id: data.category_id ?? null,
@@ -392,7 +401,6 @@ export async function commitImport(userId, { csv, mapping, importDuplicates = []
         })),
         { ordered: true },
       );
-      written.transactions = docs.map((d) => d._id);
 
       const links = [];
       for (let i = 0; i < docs.length; i += 1) {
@@ -404,14 +412,21 @@ export async function commitImport(userId, { csv, mapping, importDuplicates = []
         }
       }
       if (links.length) {
-        const linkDocs = await TransactionTag.insertMany(links, { ordered: true });
-        written.links = linkDocs.map((d) => d._id);
+        written.links = links.map(() => new mongoose.Types.ObjectId());
+        await saveOperationIntent(written);
+        await TransactionTag.insertMany(
+          links.map((link, index) => ({ ...link, _id: written.links[index] })),
+          { ordered: true },
+        );
       }
     }
 
     if (transferRows.length) {
-      const docs = await Transfer.insertMany(
-        transferRows.map(({ data }) => ({
+      written.transfers = transferRows.map(() => new mongoose.Types.ObjectId());
+      await saveOperationIntent(written);
+      await Transfer.insertMany(
+        transferRows.map(({ data }, index) => ({
+          _id: written.transfers[index],
           user_id: userId,
           from_account_id: data.from_account_id,
           to_account_id: data.to_account_id,
@@ -421,11 +436,9 @@ export async function commitImport(userId, { csv, mapping, importDuplicates = []
         })),
         { ordered: true },
       );
-      written.transfers = docs.map((d) => d._id);
     }
   } catch (error) {
-    // SAF-5: leave no partial import behind.
-    await rollback(userId, written);
+    // The durable operation wrapper compensates using its pre-recorded IDs.
     throw error;
   }
 
@@ -455,16 +468,17 @@ export async function commitImport(userId, { csv, mapping, importDuplicates = []
  * check the clean-up directly.
  */
 export async function rollback(userId, written) {
-  await Promise.all([
+  const results = await Promise.allSettled([
     written.links.length
       ? TransactionTag.deleteMany({ _id: { $in: written.links }, user_id: userId }) : null,
     written.transactions.length
       ? TransactionTag.deleteMany({ transaction_id: { $in: written.transactions }, user_id: userId }) : null,
-  ]);
-  await Promise.all([
     written.transactions.length
       ? Transaction.deleteMany({ _id: { $in: written.transactions }, user_id: userId }) : null,
     written.transfers.length
       ? Transfer.deleteMany({ _id: { $in: written.transfers }, user_id: userId }) : null,
   ]);
+  if (results.some((result) => result.status === 'rejected')) {
+    throw new ApiError(503, 'Import cleanup incomplete; reconciliation required.');
+  }
 }

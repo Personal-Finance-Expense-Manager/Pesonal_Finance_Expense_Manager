@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
 import SignInRequired from './SignInRequired.jsx';
 
@@ -199,6 +199,7 @@ export default function AccountsPage() {
   // null = not loaded yet
   const [accounts, setAccounts] = useState(null);
   const [netWorth, setNetWorth] = useState(null); // US-07, REQ-20
+  const loadVersion = useRef(0);
   const [showArchived, setShowArchived] = useState(false);
 
   const [form, setForm] = useState(emptyForm);
@@ -237,14 +238,20 @@ export default function AccountsPage() {
 
   const loadAccounts = useCallback(async () => {
     if (!isSignedIn()) return;
+    const version = ++loadVersion.current;
+    setAccounts(null);
+    setNetWorth(null);
     try {
       const data = await api(`?includeArchived=${showArchived}`);
+      if (version !== loadVersion.current) return;
       setAccounts(data.accounts);
       setNetWorth(data.net_worth || null);
       setError('');
     } catch (err) {
+      if (version !== loadVersion.current) return;
       setAccounts([]);
-      setError(err.message);
+      setNetWorth(null);
+      setError(`Balances and net worth unavailable. ${err.message}`);
     }
   }, [api, showArchived]);
 
@@ -640,7 +647,7 @@ export default function AccountsPage() {
                       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         {confirmDeleteId === account.id ? (
                           <>
-                            <span style={{ fontSize: 14, alignSelf: 'center' }}>Delete permanently?</span>
+                            <span style={{ fontSize: 14, alignSelf: 'center' }}>Move "{account.name}" to Recovery? You can restore it within 30 days.</span>
                             <button type="button" style={button('danger', busy)} disabled={busy} onClick={() => handleDelete(account)}>
                               Yes, delete
                             </button>

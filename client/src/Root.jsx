@@ -1,3 +1,4 @@
+
 import { Suspense, lazy, useEffect, useState } from 'react';
 import App from './App.jsx';
 import AppLockGate from './AppLockGate.jsx';
@@ -18,6 +19,7 @@ const loaders = {
   goals: () => import('./SavingsGoalsPage.jsx'),
   admin: () => import('./AdminPage.jsx'),
   privacy: () => import('./PrivacyPage.jsx'),
+  recovery: () => import('./RecoveryPage.jsx'),
 };
 
 const AccountsPage = lazy(loaders.accounts);
@@ -35,6 +37,7 @@ const BillRemindersPage = lazy(loaders.bills);
 const SavingsGoalsPage = lazy(loaders.goals);
 const AdminPage = lazy(loaders.admin);
 const PrivacyPage = lazy(loaders.privacy);
+const RecoveryPage = lazy(loaders.recovery);
 
 function prefetchPages() {
   const run = () => Object.values(loaders).forEach((load) => load().catch(() => {}));
@@ -51,6 +54,28 @@ function Loading() {
     <p role="status" style={{ padding: 24, color: '#94a3b8', fontFamily: 'system-ui' }}>
       Loading…
     </p>
+  );
+}
+
+function FinancialDisclaimer() {
+  return (
+    <footer
+      role="contentinfo"
+      style={{
+        padding: '14px 20px',
+        textAlign: 'center',
+        color: '#94a3b8',
+        fontSize: 12,
+        lineHeight: 1.6,
+        borderTop: '1px solid rgba(148, 163, 184, 0.2)',
+        background: '#0f172a',
+      }}
+    >
+      PFEM is a personal finance tracking tool, not a financial adviser.
+      {' '}<a href="#/recovery" style={{ color: '#86efac' }}>Recover deleted items</a>.{' '}
+      Information and calculations are for informational purposes only
+      and should not be considered financial, investment, or tax advice.
+    </footer>
   );
 }
 
@@ -72,6 +97,7 @@ export default function Root() {
       <Suspense fallback={<Loading />}>
         <Page hash={hash} />
       </Suspense>
+      <FinancialDisclaimer />
     </AppLockGate>
   );
 }
@@ -92,6 +118,7 @@ function Page({ hash }) {
   if (hash === '#/goals') return <SavingsGoalsPage />;
   if (hash === '#/admin') return <AdminPage />;
   if (hash === '#/privacy') return <PrivacyPage />;
+  if (hash === '#/recovery') return <RecoveryPage />;
 
   return <App />;
 }

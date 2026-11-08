@@ -347,7 +347,7 @@ export async function deleteRule(userId, id, { ip, now = new Date() } = {}) {
 
   const result = await RecurringRule.updateOne(
     { _id: rule._id, user_id: userId, status: { $ne: 'deleted' } },
-    { $set: { status: 'deleted', deleted_at: now } },
+    { $set: { status: 'deleted', is_deleted: true, deleted_at: now } },
   );
   if (result.modifiedCount !== 1) throw new ApiError(404, NOT_FOUND);
 

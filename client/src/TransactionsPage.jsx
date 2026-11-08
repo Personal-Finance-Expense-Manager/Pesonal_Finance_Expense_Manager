@@ -1,4 +1,6 @@
+
 import { Fragment, useCallback, useEffect, useState } from 'react';
+import { transactionDeletionWarning, financialTotalLabel } from './financialSafety.js';
 import { authHeaders, isSignedIn } from './auth.js';
 import {
   enqueue, flush, pendingCount, failedCount, pending, retry, clearFailed,
@@ -110,7 +112,7 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [pagination, setPagination] = useState({ ...emptyPagination });
-  const [totalAmount, setTotalAmount] = useState('0.00');
+  const [totalAmount, setTotalAmount] = useState(null);
 
   const [filters, setFilters] = useState({ ...emptyFilters });
   const [page, setPage] = useState(1);
@@ -154,6 +156,13 @@ export default function TransactionsPage() {
   const [message, setMessage] = useState('');
   const [listMessage, setListMessage] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // US-29 SAF-3: recycle-bin state.
+  const [recycleBin, setRecycleBin] = useState([]);
+  const [showRecycleBin, setShowRecycleBin] = useState(false);
+  const [recycleRetentionDays, setRecycleRetentionDays] = useState(30);
+  const [recycleBinMessage, setRecycleBinMessage] = useState('');
+  const [recycleBinBusy, setRecycleBinBusy] = useState(false);
 
   // Load the account and category options for the signed-in user.
   useEffect(() => {
@@ -241,6 +250,7 @@ export default function TransactionsPage() {
     });
 
     async function loadTransactions() {
+      setTotalAmount(null);
       try {
         const result = await apiRequest(
           `transactions?${params.toString()}`,
@@ -258,14 +268,14 @@ export default function TransactionsPage() {
           },
         );
 
-        setTotalAmount(result.totalAmount ?? '0.00');
+        setTotalAmount(result.totalAmount ?? null);
         setListMessage('');
       } catch (error) {
         if (error.name === 'AbortError') return;
 
         setTransactions([]);
         setPagination({ ...emptyPagination, page });
-        setTotalAmount('0.00');
+        setTotalAmount(null);
         setListMessage(error.message);
       }
     }
@@ -310,6 +320,72 @@ export default function TransactionsPage() {
   function clearFilters() {
     setFilters({ ...emptyFilters });
     setPage(1);
+  }
+
+  // US-29 SAF-3: load only the signed-in user's recoverable records.
+  async function loadRecycleBin() {
+    setRecycleBinBusy(true);
+    setRecycleBinMessage('');
+    setRecycleBin([]);
+
+    try {
+      const result = await apiRequest('transactions/recycle-bin');
+      setRecycleBin(Array.isArray(result.items) ? result.items : []);
+      setRecycleRetentionDays(result.retention_days || 30);
+    } catch (error) {
+      setRecycleBinMessage(error.message);
+    } finally {
+      setRecycleBinBusy(false);
+    }
+  }
+
+  // US-29 SAF-3: open or close the recycle bin.
+  function toggleRecycleBin() {
+    if (!showRecycleBin) {
+      loadRecycleBin();
+    }
+
+    setShowRecycleBin((current) => !current);
+  }
+
+  // US-29 SAF-3: require confirmation before soft deletion.
+  async function handleDeleteTransaction(item) {
+    const confirmed = window.confirm(
+      transactionDeletionWarning(item, recycleRetentionDays)
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const result = await apiRequest(`transactions/${item.id}`, {
+        method: 'DELETE',
+      });
+
+      setListMessage(result.message || 'Moved to recycle bin.');
+      if (showRecycleBin) await loadRecycleBin();
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setListMessage(error.message);
+    }
+  }
+
+  // US-29 SAF-3: restore a record from the recycle bin.
+  async function handleRestoreTransaction(item) {
+    setRecycleBinBusy(true);
+    setRecycleBinMessage('');
+
+    try {
+      const result = await apiRequest(`transactions/${item.id}/restore`, {
+        method: 'POST',
+      });
+
+      await loadRecycleBin();
+      setListMessage(result.message || 'Transaction restored successfully.');
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setRecycleBinMessage(error.message);
+      setRecycleBinBusy(false);
+    }
   }
 
   // REQ-80: check receipts in the browser before anything is uploaded.
@@ -813,8 +889,138 @@ export default function TransactionsPage() {
       </p>
 
       <p style={{ color: '#cbd5e1' }}>
-        Filtered amount total: {totalAmount}
+        Filtered amount total: {financialTotalLabel(totalAmount)}
       </p>
+
+      {/* US-29 SAF-3: recover deleted transactions and transfers. */}
+      <section
+        style={{
+          margin: '18px 0',
+          padding: 16,
+          border: '1px solid #475569',
+          borderRadius: 10,
+          background: '#111827',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0 }}>Recycle Bin</h2>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 0 }}>
+              Deleted transactions can be restored within {recycleRetentionDays} days.
+              After this period, records and their receipts are permanently purged. This cannot be undone from the recycle bin.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={toggleRecycleBin}
+            disabled={!signedIn || recycleBinBusy}
+            style={buttonStyle}
+          >
+            {recycleBinBusy
+              ? 'Loading…'
+              : showRecycleBin
+                ? 'Hide Recycle Bin'
+                : 'Open Recycle Bin'}
+          </button>
+        </div>
+
+        {showRecycleBin && (
+          <div style={{ marginTop: 16 }}>
+            {recycleBinMessage && (
+              <p role="status" style={{ color: '#fca5a5' }}>
+                {recycleBinMessage}
+              </p>
+            )}
+
+            {!recycleBinBusy && !recycleBinMessage && !recycleBin.length && (
+              <p style={{ color: '#94a3b8' }}>
+                Your recycle bin is empty.
+              </p>
+            )}
+
+            {recycleBin.length > 0 && (
+              <div style={{ overflowX: 'auto' }}>
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    minWidth: 650,
+                    textAlign: 'left',
+                  }}
+                >
+                  <thead>
+                    <tr style={{ color: '#86efac' }}>
+                      <th style={{ padding: 10 }}>Date</th>
+                      <th style={{ padding: 10 }}>Type</th>
+                      <th style={{ padding: 10 }}>Note</th>
+                      <th style={{ padding: 10 }}>Amount</th>
+                      <th style={{ padding: 10 }}>Deleted on</th>
+                      <th style={{ padding: 10 }}>Restore until</th>
+                      <th style={{ padding: 10 }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recycleBin.map((item) => (
+                      <tr
+                        key={item.id}
+                        style={{ borderTop: '1px solid #334155' }}
+                      >
+                        <td style={{ padding: 10 }}>
+                          {item.transaction_date
+                            ? new Date(item.transaction_date).toLocaleDateString()
+                            : '—'}
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          {item.type || 'Transfer'}
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          {item.note || '—'}
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          {item.currency || 'INR'} {item.amount}
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          {item.deleted_at
+                            ? new Date(item.deleted_at).toLocaleDateString()
+                            : '—'}
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          {item.restorable_until
+                            ? new Date(item.restorable_until).toLocaleDateString()
+                            : '—'}
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreTransaction(item)}
+                            disabled={recycleBinBusy}
+                            style={{
+                              ...buttonStyle,
+                              background: '#166534',
+                              color: '#dcfce7',
+                            }}
+                          >
+                            Restore
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <div style={{ overflowX: 'auto', marginBottom: 12 }}>
         <table
@@ -841,6 +1047,7 @@ export default function TransactionsPage() {
                 'Amount',
                 'Tags',
                 'Receipts',
+                'Actions',
               ].map((heading) => (
                 <th key={heading} style={{ padding: 10 }}>
                   {heading}
@@ -852,81 +1059,100 @@ export default function TransactionsPage() {
           <tbody>
             {transactions.map((item) => (
               <Fragment key={item.id}>
-              <tr
-                style={{ borderBottom: '1px solid #334155' }}
-              >
-                <td style={{ padding: 10 }}>
-                  {item.transaction_date
-                    ? new Date(
-                        item.transaction_date,
-                      ).toLocaleDateString()
-                    : '—'}
-                </td>
-
-                <td style={{ padding: 10 }}>
-                  {item.category_name || 'Uncategorized'}
-                </td>
-
-                <td style={{ padding: 10 }}>
-                  {item.account_name || '—'}
-                </td>
-
-                <td
-                  style={{
-                    padding: 10,
-                    overflowWrap: 'anywhere',
-                  }}
+                <tr
+                  style={{ borderBottom: '1px solid #334155' }}
                 >
-                  {item.note || '—'}
-                </td>
+                  <td style={{ padding: 10 }}>
+                    {item.transaction_date
+                      ? new Date(
+                          item.transaction_date,
+                        ).toLocaleDateString()
+                      : '—'}
+                  </td>
 
-                <td style={{ padding: 10 }}>
-                  {item.type}
-                </td>
+                  <td style={{ padding: 10 }}>
+                    {item.category_name || 'Uncategorized'}
+                  </td>
 
-                <td style={{ padding: 10 }}>
-                  {item.currency || 'INR'} {item.amount}
-                </td>
+                  <td style={{ padding: 10 }}>
+                    {item.account_name || '—'}
+                  </td>
 
-                <td style={{ padding: 10 }}>
-                  {(item.tags || []).join(', ') || '—'}
-                </td>
-
-                {/* US-23 (REQ-79): receipts are shown against the transaction. */}
-                <td style={{ padding: 10 }}>
-                  <button
-                    type="button"
-                    aria-expanded={openReceipts === item.id}
-                    aria-label={`Receipts for this transaction: ${item.attachment_count || 0}`}
-                    onClick={() =>
-                      setOpenReceipts((current) =>
-                        current === item.id ? '' : item.id,
-                      )
-                    }
+                  <td
                     style={{
-                      padding: '4px 10px',
-                      borderRadius: 999,
-                      border: '1px solid #475569',
-                      background: openReceipts === item.id ? '#14532d' : 'transparent',
-                      color: '#e2e8f0',
-                      cursor: 'pointer',
+                      padding: 10,
+                      overflowWrap: 'anywhere',
                     }}
                   >
-                    📎 {item.attachment_count || 0}
-                  </button>
-                </td>
-              </tr>
+                    {item.note || '—'}
+                  </td>
 
-              {openReceipts === item.id && (
-                <tr style={{ borderBottom: '1px solid #334155', background: '#0b1220' }}>
-                  <td colSpan={8}>
-                    <ReceiptAttachments
-                      transactionId={item.id}
-                      onChange={() => setRefresh((value) => value + 1)}
-                    />
+                  <td style={{ padding: 10 }}>
+                    {item.type}
+                  </td>
+
+                  <td style={{ padding: 10 }}>
+                    {item.currency || 'INR'} {item.amount}
+                  </td>
+
+                  <td style={{ padding: 10 }}>
+                    {(item.tags || []).join(', ') || '—'}
+                  </td>
+
+                  {/* US-23 (REQ-79): receipts are shown against the transaction. */}
+                  <td style={{ padding: 10 }}>
+                    <button
+                      type="button"
+                      aria-expanded={openReceipts === item.id}
+                      aria-label={`Receipts for this transaction: ${item.attachment_count || 0}`}
+                      onClick={() =>
+                        setOpenReceipts((current) =>
+                          current === item.id ? '' : item.id,
+                        )
+                      }
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 999,
+                        border: '1px solid #475569',
+                        background: openReceipts === item.id ? '#14532d' : 'transparent',
+                        color: '#e2e8f0',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      📎 {item.attachment_count || 0}
+                    </button>
+                  </td>
+
+                  {/* US-29 SAF-3: confirm before moving a transaction to the recycle bin. */}
+                  <td style={{ padding: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTransaction(item)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #991b1b',
+                        background: '#450a0a',
+                        color: '#fecaca',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
-              )}
+
+                {openReceipts === item.id && (
+                  <tr style={{ borderBottom: '1px solid #334155', background: '#0b1220' }}>
+                    <td colSpan={9}>
+                      <ReceiptAttachments
+                        transactionId={item.id}
+                        onChange={() => setRefresh((value) => value + 1)}
+                      />
+                    </td>
+                  </tr>
+                )}
               </Fragment>
             ))}
 
@@ -935,7 +1161,7 @@ export default function TransactionsPage() {
               !listMessage && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       padding: 16,
                       color: '#94a3b8',

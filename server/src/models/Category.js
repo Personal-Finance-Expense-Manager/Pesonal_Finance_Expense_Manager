@@ -1,3 +1,4 @@
+import recoverable from './plugins/recoverable.js';
 ﻿import mongoose from 'mongoose';
 
 const categorySchema = new mongoose.Schema({
@@ -25,6 +26,8 @@ const categorySchema = new mongoose.Schema({
 
 categorySchema.index({ user_id: 1, type: 1, name: 1 });
 categorySchema.index({ parent_category_id: 1 });
+
+categorySchema.plugin(recoverable);
 
 export default mongoose.models.Category ||
   mongoose.model('Category', categorySchema);

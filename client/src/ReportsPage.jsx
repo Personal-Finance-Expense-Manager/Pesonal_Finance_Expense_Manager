@@ -326,6 +326,7 @@ export default function ReportsPage() {
             {/* ---- REQ-76: pace of spending ---- */}
             <section style={cardStyle}>
               <h2 style={{ margin: '0 0 4px', fontSize: 18 }}>Pace of spending</h2>
+              <p style={{ fontSize: 13, color: colors.muted }}>This is an arithmetic projection from your recorded data, not a guarantee of future spending or financial advice.</p>
               <p style={{ margin: '0 0 14px', fontSize: 13, color: colors.muted }}>REQ-76</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 18 }}>
                 <div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
 import SignInRequired from './SignInRequired.jsx';
 
@@ -72,20 +72,25 @@ const STATUS_COLOR = { ok: colors.green, warning: colors.amber, over: colors.red
 export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const loadVersion = useRef(0);
 
   const load = useCallback(async () => {
     if (!isSignedIn()) return;
+    const version = ++loadVersion.current;
+    setData(null);
     try {
       const response = await fetch(`${API_URL}/api/reports/dashboard`, {
         headers: { ...authHeaders() },
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not load the dashboard.');
+      if (version !== loadVersion.current) return;
       setData(body);
       setError('');
     } catch (err) {
+      if (version !== loadVersion.current) return;
       setData(null);
-      setError(err.message);
+      setError(`Balances and dashboard totals unavailable. ${err.message}`);
     }
   }, []);
 

@@ -1,3 +1,5 @@
+import { withFinancialOperation, saveOperationIntent } from './financialOperationService.js';
+import { softDeleteResource } from './resourceRecoveryService.js';
 import Decimal from 'decimal.js';
 import mongoose from 'mongoose';
 import Goal from '../models/Goal.js';
@@ -201,7 +203,22 @@ export async function updateGoal(userId, goalId, data) {
   return presentGoal(goal);
 }
 
+// MongoDB pipelines are supported by standalone MongoDB. Decimal128 values
+// are constructed explicitly because Mongoose does not cast update pipelines.
+function savingsUpdate(delta) {
+  return [
+    { $set: { saved_amount: { $add: ['$saved_amount', delta] }, updatedAt: '$$NOW' } },
+    { $set: { status: { $cond: [
+      { $gte: ['$saved_amount', '$target_amount'] }, 'completed', 'active',
+    ] } } },
+  ];
+}
+
 export async function contributeToGoal(userId, goalId, data) {
+  return withFinancialOperation(userId, 'goal', () => contributeToGoalImpl(userId, goalId, data));
+}
+
+async function contributeToGoalImpl(userId, goalId, data) {
   const goal = await findOwnedGoal(userId, goalId);
 
   if (goal.status !== 'active') {
@@ -252,10 +269,14 @@ export async function contributeToGoal(userId, goalId, data) {
 
   const decimalAmount = mongoose.Types.Decimal128.fromString(amount.toFixed(2));
 
+  const recordId = new mongoose.Types.ObjectId();
+  const operation = await saveOperationIntent({ goal_id: goal._id, record_id: recordId, record_model: 'GoalContribution', delta: amount.toFixed(2) });
+
   const updatedGoal = await Goal.findOneAndUpdate(
     {
       _id: goal._id,
       user_id: userId,
+      safety_operation_id: null,
       status: 'active',
       $expr: {
         $lte: [
@@ -264,7 +285,7 @@ export async function contributeToGoal(userId, goalId, data) {
         ],
       },
     },
-    { $inc: { saved_amount: decimalAmount } },
+    [...savingsUpdate(decimalAmount), { $set: { safety_operation_id: operation._id } }],
     { new: true },
   );
 
@@ -277,6 +298,7 @@ export async function contributeToGoal(userId, goalId, data) {
 
   try {
     await GoalContribution.create({
+      _id: recordId,
       user_id: userId,
       goal_id: goal._id,
       source_account_id: account._id,
@@ -284,26 +306,7 @@ export async function contributeToGoal(userId, goalId, data) {
       contribution_date: today(),
     });
   } catch (error) {
-    await Goal.updateOne(
-      { _id: goal._id, user_id: userId },
-      {
-        $inc: {
-          saved_amount: mongoose.Types.Decimal128.fromString(
-            amount.negated().toFixed(2),
-          ),
-        },
-      },
-    );
-
     throw error;
-  }
-
-  if (
-    new Decimal(updatedGoal.saved_amount.toString())
-      .greaterThanOrEqualTo(updatedGoal.target_amount.toString())
-  ) {
-    updatedGoal.status = 'completed';
-    await updatedGoal.save();
   }
 
   return getGoal(userId, goalId);
@@ -313,6 +316,10 @@ export async function contributeToGoal(userId, goalId, data) {
  * REQ-67: Withdraw saved money back into a user's account.
  */
 export async function withdrawFromGoal(userId, goalId, data) {
+  return withFinancialOperation(userId, 'goal', () => withdrawFromGoalImpl(userId, goalId, data));
+}
+
+async function withdrawFromGoalImpl(userId, goalId, data) {
   const goal = await findOwnedGoal(userId, goalId);
 
   if (!['active', 'completed'].includes(goal.status)) {
@@ -354,20 +361,18 @@ export async function withdrawFromGoal(userId, goalId, data) {
   const decimalAmount = mongoose.Types.Decimal128.fromString(amount.toFixed(2));
 
   // Atomic conditional update prevents withdrawing more than saved.
+  const recordId = new mongoose.Types.ObjectId();
+  const operation = await saveOperationIntent({ goal_id: goal._id, record_id: recordId, record_model: 'GoalWithdrawal', delta: amount.negated().toFixed(2) });
+
   const updatedGoal = await Goal.findOneAndUpdate(
     {
       _id: goal._id,
       user_id: userId,
       status: { $in: ['active', 'completed'] },
+      safety_operation_id: null,
       saved_amount: { $gte: decimalAmount },
     },
-    {
-      $inc: {
-        saved_amount: mongoose.Types.Decimal128.fromString(
-          amount.negated().toFixed(2),
-        ),
-      },
-    },
+    [...savingsUpdate(mongoose.Types.Decimal128.fromString(amount.negated().toFixed(2))), { $set: { safety_operation_id: operation._id } }],
     { new: true },
   );
 
@@ -380,6 +385,7 @@ export async function withdrawFromGoal(userId, goalId, data) {
 
   try {
     await GoalWithdrawal.create({
+      _id: recordId,
       user_id: userId,
       goal_id: goal._id,
       destination_account_id: account._id,
@@ -387,25 +393,7 @@ export async function withdrawFromGoal(userId, goalId, data) {
       withdrawal_date: today(),
     });
   } catch (error) {
-    await Goal.updateOne(
-      { _id: goal._id, user_id: userId },
-      {
-        $inc: {
-          saved_amount: decimalAmount,
-        },
-      },
-    );
-
     throw error;
-  }
-
-  // A completed goal becomes active again if money is withdrawn.
-  if (
-    new Decimal(updatedGoal.saved_amount.toString())
-      .lessThan(updatedGoal.target_amount.toString())
-  ) {
-    updatedGoal.status = 'active';
-    await updatedGoal.save();
   }
 
   return getGoal(userId, goalId);
@@ -414,19 +402,8 @@ export async function withdrawFromGoal(userId, goalId, data) {
 export async function deleteGoal(userId, goalId) {
   const goal = await findOwnedGoal(userId, goalId);
 
-  await Promise.all([
-    GoalContribution.deleteMany({
-      user_id: userId,
-      goal_id: goal._id,
-    }),
-
-    GoalWithdrawal.deleteMany({
-      user_id: userId,
-      goal_id: goal._id,
-    }),
-  ]);
-
-  await goal.deleteOne();
+  // Tombstone only: contributions and withdrawals continue to determine balances.
+  await softDeleteResource(goal);
 
   return { id: goal._id.toString() };
 }

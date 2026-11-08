@@ -124,6 +124,29 @@ Limits to know about:
 
 ## Verifying your backups regularly
 
+US-29 adds a repeatable **isolated** restore drill. From `server`, run:
+
+```text
+npm run test:integration:isolated -- test/backup.integration.test.js
+```
+
+The runner allocates a fresh database, verifies that it did not already exist,
+and supplies temporary directories and keys. It never targets the development
+database and does not configure MongoDB. The drill measures verification, the
+safety backup, restore and exact equality of a 1,000-document fixture. Its test
+diagnostic contains the real elapsed milliseconds. It excludes filesystem receipts,
+off-host retrieval and operator response; see `US29_ACCEPTANCE_REPORT.md` for the
+actual results and limits. Snapshot-only concurrency testing is skipped on standalone
+MongoDB, while best-effort backup/restore tests execute.
+
+If a restore fails **after collection swaps begin**, the API now remains in
+maintenance mode. Stop all writer instances and use the CLI to restore the
+pre-restore safety backup before resuming service. Do not merely clear maintenance
+mode on a partially restored database. A durable `.restore-incomplete.json` marker in `BACKUP_DIR` keeps the API and
+startup schedulers unavailable across process restarts. It records the original
+safety-backup ID and is removed only after successful recovery. Keep every writer
+offline until recovery is verified.
+
 An unrestored backup is a hope, not a backup. Monthly: restore the newest backup into
 a **separate** database (point a copy of the API at a scratch `MONGO_URI` with the same
 keys), sign in, and check data. `POST /api/admin/backups/:id/verify` checks integrity

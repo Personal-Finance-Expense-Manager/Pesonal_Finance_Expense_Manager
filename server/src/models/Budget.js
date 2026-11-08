@@ -1,3 +1,4 @@
+import recoverable from './plugins/recoverable.js';
 ﻿
 import mongoose from 'mongoose';
 import { isPositiveMoney } from '../utils/money.js';
@@ -102,6 +103,8 @@ budgetSchema.pre('validate', function validatePeriod() {
     );
   }
 });
+
+budgetSchema.plugin(recoverable);
 
 export default mongoose.models.Budget ||
   mongoose.model('Budget', budgetSchema);

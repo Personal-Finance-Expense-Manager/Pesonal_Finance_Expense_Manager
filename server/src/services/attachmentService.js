@@ -1,3 +1,4 @@
+import { softDeleteResource } from './resourceRecoveryService.js';
 import mongoose from 'mongoose';
 import Attachment from '../models/Attachment.js';
 import Transaction from '../models/Transaction.js';
@@ -170,12 +171,8 @@ export async function addAttachment(userId, transactionId, file, { ip } = {}) {
 export async function removeAttachment(userId, attachmentId, { ip } = {}) {
   const attachment = await findOwnedAttachment(userId, attachmentId);
 
-  // Record first, file second: a crash in between leaves an unreferenced
-  // file, never a record whose file has gone.
-  await Attachment.deleteOne({ _id: attachment._id, user_id: userId });
-  await deleteObject(attachment.object_key).catch((error) => {
-    console.error('[attachments] could not delete stored file:', error.message);
-  });
+  // Retain the encrypted file with its recoverable record.
+  await softDeleteResource(attachment);
 
   await recordAudit({
     userId,

@@ -1,3 +1,4 @@
+import recoverable from './plugins/recoverable.js';
 ﻿
 import mongoose from 'mongoose';
 import {
@@ -27,6 +28,7 @@ const goalSchema = new mongoose.Schema({
         'Target amount must be positive and have at most two decimal places.',
     },
   },
+  safety_operation_id: { type: mongoose.Schema.Types.ObjectId, default: null },
   saved_amount: {
     type: mongoose.Schema.Types.Decimal128,
     default: '0.00',
@@ -58,6 +60,8 @@ goalSchema.index({
   user_id: 1,
   status: 1,
 });
+
+goalSchema.plugin(recoverable);
 
 export default mongoose.models.Goal ||
   mongoose.model('Goal', goalSchema);

@@ -68,7 +68,7 @@ export async function purgeExpired(now = new Date()) {
 
   if (transactionIds.length) {
     await TransactionTag.deleteMany({ transaction_id: { $in: transactionIds } });
-    const files = await Attachment.find({ transaction_id: { $in: transactionIds } })
+    const files = await Attachment.find({ transaction_id: { $in: transactionIds } }).withDeleted()
       .select('object_key')
       .lean();
     const removed = await Attachment.deleteMany({ transaction_id: { $in: transactionIds } });

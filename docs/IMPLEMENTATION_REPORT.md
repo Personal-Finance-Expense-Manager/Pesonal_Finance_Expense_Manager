@@ -1,4 +1,29 @@
-# Implementation report - US-26 (#62) and US-28 (#67)
+# Implementation report - US-26 (#62), US-28 (#67), and US-29 (#68)
+
+## US-29 continuation - 8 November 2026
+
+The current acceptance map, implementation details, measured restore drill and
+remaining standalone-MongoDB limitations are in [US29_ACCEPTANCE_REPORT.md](US29_ACCEPTANCE_REPORT.md).
+That report supersedes the earlier US-29 findings. Existing working-tree changes
+were retained and extended; nothing was committed or pushed.
+
+Current checks: **407 backend unit tests passed; 375 MongoDB integration tests
+passed, 1 snapshot-only test skipped; 89 frontend tests passed; production build
+passed; lint 0 errors / 15 pre-existing warnings; Git whitespace check passed.** Final focused
+recovery/goal and recovery/auth reruns passed 18 and 36 tests respectively; the final
+recovery/CLI guard rerun passed 14 tests.
+The local 1,000-document recovery drill measured **980 ms** in the full passing run;
+this does not certify production RTO or receipt-file restoration.
+
+The remaining literal acceptance gaps are documented rather than declared complete:
+multi-document ACID isolation is unavailable on standalone MongoDB; recovery is a
+durable offline compensation protocol with a fail-closed API fence. Production
+RPO/RTO and the exception for confirmed privacy erasure remain bounded/open.
+
+The sections below preserve the historical US-26/US-28 report and its old test
+results; they are not the current US-29 run.
+
+---
 
 Status key: **Done** = implemented and covered by automated tests that were run.
 **Done, needs deployment** = the application part is done and tested; a production

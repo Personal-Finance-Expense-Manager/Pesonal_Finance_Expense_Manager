@@ -10,7 +10,7 @@ import mongoose from 'mongoose';
 import { ApiError } from '../utils/apiError.js';
 import { backupKey, createDecryptStream, createEncryptStream } from '../utils/backupCrypto.js';
 import { BACKUP_RETENTION_DAYS_DEFAULT } from '../config/security.js';
-import { setMaintenanceMode } from '../middleware/maintenance.js';
+import { setMaintenanceMode, restoreMarkerPath } from '../middleware/maintenance.js';
 
 /**
  * Encrypted database backups - US-26 (#62), SRS REQ-97.
@@ -71,7 +71,8 @@ export const backupsEnabled = () => process.env.BACKUP_ENABLED !== 'false';
 
 export function retentionDays() {
   const configured = Number(process.env.BACKUP_RETENTION_DAYS);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : BACKUP_RETENTION_DAYS_DEFAULT;
+  return Number.isFinite(configured) && configured >= BACKUP_RETENTION_DAYS_DEFAULT
+    ? Math.floor(configured) : BACKUP_RETENTION_DAYS_DEFAULT;
 }
 
 const paths = (id) => ({
@@ -444,6 +445,8 @@ export async function restoreBackup(id, { requestedBy = null } = {}) {
   const token = crypto.randomBytes(4).toString('hex');
   let shadows = new Map();
   let maintenance = false;
+  let swapStarted = false;
+  let completed = false;
 
   try {
     // 1. Prove the backup is whole before anything is changed.
@@ -461,7 +464,21 @@ export async function restoreBackup(id, { requestedBy = null } = {}) {
     shadows = await buildShadows(db, id, token);
 
     // 5. Swap, then remove collections the backup did not contain.
+    // Persist the fence before the first rename, so restarting Node cannot
+    // accidentally expose a database containing partially swapped collections.
+    let previousMarker = null;
+    try { previousMarker = JSON.parse(await fs.readFile(restoreMarkerPath(), 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const temporaryMarker = `${restoreMarkerPath()}.${token}.tmp`;
+    const marker = await fs.open(temporaryMarker, 'wx', 0o600);
+    try {
+      await marker.writeFile(JSON.stringify({ backup_id: id, safety_backup_id: safety.id,
+        original_safety_backup_id: previousMarker?.original_safety_backup_id || previousMarker?.safety_backup_id || safety.id }));
+      await marker.sync();
+    } finally { await marker.close(); }
+    await fs.rename(temporaryMarker, restoreMarkerPath());
     for (const [name, shadow] of shadows) {
+      swapStarted = true;
       await db.collection(shadow).rename(name, { dropTarget: true });
     }
     shadows = new Map();
@@ -471,6 +488,8 @@ export async function restoreBackup(id, { requestedBy = null } = {}) {
       if (!keep.has(info.name)) await db.dropCollection(info.name);
     }
 
+    completed = true;
+    await fs.unlink(restoreMarkerPath());
     return {
       restored_backup_id: id,
       safety_backup_id: safety.id,
@@ -485,7 +504,9 @@ export async function restoreBackup(id, { requestedBy = null } = {}) {
     throw failure;
   } finally {
     for (const shadow of shadows.values()) await db.dropCollection(shadow).catch(() => {});
-    if (maintenance) setMaintenanceMode(false);
+    // Once a swap starts, a failure may have left collections from two moments.
+    // Keep reads/writes unavailable until the operator restores the safety backup.
+    if (maintenance && (!swapStarted || completed)) setMaintenanceMode(false);
     await release();
   }
 }

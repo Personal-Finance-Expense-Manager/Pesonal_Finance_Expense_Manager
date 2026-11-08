@@ -1,9 +1,12 @@
+import { softDeleteResource } from '../services/resourceRecoveryService.js';
 import { Router } from 'express';
 import Decimal from 'decimal.js';
 import mongoose from 'mongoose';
 import Account from '../models/Account.js';
 import Transaction from '../models/Transaction.js';
 import Transfer from '../models/Transfer.js';
+import GoalContribution from '../models/GoalContribution.js';
+import GoalWithdrawal from '../models/GoalWithdrawal.js';
 import {
   validateNewAccount,
   validateAccountUpdate,
@@ -100,17 +103,19 @@ async function findOwnAccount(req, res) {
   return account;
 }
 
-/** True if any income, expense or transfer uses this account. */
+/** True if any transaction, transfer or savings ledger record uses this account. */
 async function hasTransactions(userId, accountId) {
   // Soft-deleted transactions count too: they can still be restored (US-09).
-  const [transaction, transfer] = await Promise.all([
+  const [transaction, transfer, contribution, withdrawal] = await Promise.all([
     Transaction.exists({ user_id: userId, account_id: accountId }),
     Transfer.exists({
       user_id: userId,
       $or: [{ from_account_id: accountId }, { to_account_id: accountId }],
     }),
+    GoalContribution.exists({ user_id: userId, source_account_id: accountId }),
+    GoalWithdrawal.exists({ user_id: userId, destination_account_id: accountId }),
   ]);
-  return Boolean(transaction || transfer);
+  return Boolean(transaction || transfer || contribution || withdrawal);
 }
 
 function isDuplicateKeyError(error) {
@@ -283,8 +288,8 @@ router.delete('/:id', async (req, res, next) => {
       });
     }
 
-    await account.deleteOne();
-    return res.json({ message: 'Account deleted.' });
+    await softDeleteResource(account);
+    return res.json({ message: 'Account moved to recovery for 30 days.' });
   } catch (error) {
     return next(error);
   }

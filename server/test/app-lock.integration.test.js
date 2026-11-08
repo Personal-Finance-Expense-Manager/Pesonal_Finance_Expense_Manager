@@ -1,3 +1,4 @@
+import { assertIsolatedTestDatabase } from './helpers/testIsolation.js';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -12,9 +13,9 @@ import { createSoftAuthenticator, FLAG_UP } from './helpers/softAuthenticator.js
  * Drives the real Express app against a real MongoDB with real sign-in
  * tokens (not the X-User-Id header: the lock belongs to the session). Run with
  *
- *   TEST_MONGO_URI=mongodb://127.0.0.1:27017/pfem_test npm run test:integration
+ *   npm run test:integration:isolated
  *
- * The helper database is DROPPED, so its name must contain "test".
+ * Only the unique database allocated by the isolated runner may be reset.
  */
 
 process.env.NODE_ENV = 'test';
@@ -27,11 +28,11 @@ const uri = process.env.TEST_MONGO_URI;
 
 if (!uri) {
   throw new Error(
-    'TEST_MONGO_URI is not set. Example: TEST_MONGO_URI=mongodb://127.0.0.1:27017/pfem_test npm run test:integration'
+    'TEST_MONGO_URI is not set. Example: npm run test:integration:isolated'
   );
 }
 
-const dbName = new URL(uri).pathname.replace(/^\//, '');
+const dbName = assertIsolatedTestDatabase(uri, process.env.PFEM_TEST_RUN_ID);
 
 if (!/test/i.test(dbName)) {
   throw new Error(`Refusing to run: database "${dbName}" does not look like a test database.`);
@@ -310,7 +311,7 @@ describe('turning the app lock on (REQ-11)', () => {
     assert.equal(res.body.enabled, true);
     assert.equal(res.body.locked, false);
 
-    const remaining = new Date(res.body.unlockedUntil).getTime() - before;
+    const remaining = new Date(res.body.unlockedUntil).getTime() - Date.now();
     assert.ok(remaining > 115_000 && remaining <= 121_000, `unlock window was ${remaining} ms`);
     await assertAccountsOpen(api);
   });
@@ -493,7 +494,7 @@ describe('re-locks after two minutes in the background (REQ-11, UT_64)', () => {
     await unlock(api);
 
     const doc = await sessionDoc(token);
-    const remaining = doc.app_unlocked_until.getTime() - before;
+    const remaining = doc.app_unlocked_until.getTime() - Date.now();
 
     assert.ok(remaining > 115_000 && remaining <= 121_000, `window was ${remaining} ms`);
   });

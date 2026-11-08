@@ -392,3 +392,13 @@ the React client talks only to the Express API, and only the API touches MongoDB
 
 Every pull request must reference its backlog issue and is reviewed by a
 repository owner before merging.
+
+## US-29 safety verification
+
+The latest acceptance map and limitations are in
+[docs/US29_ACCEPTANCE_REPORT.md](docs/US29_ACCEPTANCE_REPORT.md).
+Use `npm run test:integration:isolated` from `server` for MongoDB integration tests.
+It allocates and verifies a unique test database; existing development data must
+never be reset for a test run. Older instructions elsewhere in this README that set `TEST_MONGO_URI`
+manually are superseded by this guarded runner. On PowerShell installations that
+block `npm.ps1`, use `npm.cmd` instead.

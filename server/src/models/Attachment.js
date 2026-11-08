@@ -1,3 +1,4 @@
+import recoverable from './plugins/recoverable.js';
 import mongoose from 'mongoose';
 import fieldEncryption from './plugins/fieldEncryption.js';
 
@@ -14,5 +15,7 @@ const attachmentSchema = new mongoose.Schema({
 attachmentSchema.index({ user_id: 1, transaction_id: 1 });
 
 attachmentSchema.plugin(fieldEncryption, { fields: ['file_name'] });
+
+attachmentSchema.plugin(recoverable);
 
 export default mongoose.models.Attachment || mongoose.model('Attachment', attachmentSchema);

@@ -155,6 +155,7 @@ export function reportToPdf(report, { userName = '', generatedAt = new Date() } 
     doc.font('Helvetica-Bold').fontSize(11).text('Pace of spending');
     doc.moveDown(0.3);
     doc.font('Helvetica').fontSize(9.5).fillColor(MUTED);
+    doc.text('Arithmetic projection from your recorded data, not a guarantee of future spending or financial advice.');
     doc.text(
       `Average daily spend ${money(report.projection.average_daily_spend)} over ` +
         `${report.projection.elapsed_days} of ${report.projection.total_days} days.`

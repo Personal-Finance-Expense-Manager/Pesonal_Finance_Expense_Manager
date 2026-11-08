@@ -9,6 +9,7 @@ import { startBillReminderJob } from './jobs/billReminderJob.js';
 import { startBackupScheduler } from './services/backupScheduler.js';
 import { assertEnvironment } from './config/security.js';
 import { keyRing } from './utils/crypto.js';
+import { inMaintenanceMode } from './middleware/maintenance.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -24,7 +25,7 @@ async function start() {
 
   const connected = await connectDB();
 
-  if (connected) {
+  if (connected && !inMaintenanceMode()) {
     startPurgeJob();
     startBudgetJob();
 
@@ -39,6 +40,8 @@ async function start() {
       startBillReminderJob();
     }
   }
+
+  if (connected && inMaintenanceMode()) console.warn('[recovery] Incomplete restore detected: API and scheduled jobs remain unavailable until offline recovery completes.');
 
   app.listen(PORT, () => {
     console.log(`[api] PFEM server listening on http://localhost:${PORT}`);

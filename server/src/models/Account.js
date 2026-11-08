@@ -1,3 +1,4 @@
+import recoverable from './plugins/recoverable.js';
 ﻿import mongoose from 'mongoose';
 import { hasAtMostTwoDecimalPlaces } from '../utils/money.js';
 
@@ -37,6 +38,8 @@ const accountSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 accountSchema.index({ user_id: 1, name: 1 });
+
+accountSchema.plugin(recoverable);
 
 export default mongoose.models.Account ||
   mongoose.model('Account', accountSchema);

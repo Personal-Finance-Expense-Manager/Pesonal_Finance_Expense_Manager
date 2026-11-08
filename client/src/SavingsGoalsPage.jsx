@@ -1,5 +1,5 @@
-
 import { useCallback, useEffect, useState } from 'react';
+import { goalDeletionWarning } from './financialSafety.js';
 import { authHeaders, isSignedIn } from './auth.js';
 import { SignedOutPage } from './SignInRequired.jsx';
 
@@ -209,7 +209,7 @@ function SavingsGoalsContent() {
     const id = goal._id || goal.id;
 
     if (!window.confirm(
-      `Delete "${goal.name}"? Any saved contributions will be refunded to their original source accounts.`
+      goalDeletionWarning(goal)
     )) return;
 
     setError('');
@@ -737,6 +737,13 @@ function SavingsGoalsContent() {
                       {goal.monthly_savings_required !== undefined
                         ? money(goal.monthly_savings_required)
                         : '—'}
+                    </p>
+
+                    {/* SAF-2: Clearly identify projections as estimates, not guarantees. */}
+                    <p style={{ color: '#fbbf24', fontSize: 12 }}>
+                      This is an arithmetic projection based on your current
+                      savings, target amount and remaining time. It is not a
+                      guarantee of future savings or financial advice.
                     </p>
 
                     {goal.withdrawals?.length > 0 && (

@@ -11,7 +11,7 @@ import { recordAudit } from './auditService.js';
 /**
  * Automated backups - US-26 (#62), REQ-97.
  *
- * Every 15 minutes this checks whether the newest backup is older than 24 hours
+ * Every 15 minutes this checks whether the newest backup is at least 23h45m old
  * and, if so, takes one. Checking against the files on disk (not a timer that
  * restarts with the process) means a restart neither skips a day nor produces a
  * burst of backups. Expired backups (older than the retention period, 7 days by
@@ -22,12 +22,18 @@ import { recordAudit } from './auditService.js';
  * job off on the instances that should not run it.
  */
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const BACKUP_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+// Begin before the 24-hour deadline so polling alone does not add 15 minutes.
+export function backupIsDue(createdAt, now = Date.now()) {
+  const created = new Date(createdAt).getTime();
+  return !createdAt || !Number.isFinite(created) || now - created >= DAY_MS - BACKUP_CHECK_INTERVAL_MS;
+}
 
 export async function runBackupCycle(now = Date.now()) {
   if (!backupsEnabled()) return { skipped: 'disabled' };
 
   const newest = (await listBackups())[0];
-  const due = !newest || now - new Date(newest.created_at).getTime() >= DAY_MS;
+  const due = backupIsDue(newest?.created_at, now);
   let created = null;
 
   if (due) {
@@ -65,7 +71,7 @@ export async function runBackupCycle(now = Date.now()) {
   return { created: created?.id ?? null, removed };
 }
 
-export function startBackupScheduler({ intervalMs = 15 * 60 * 1000 } = {}) {
+export function startBackupScheduler({ intervalMs = BACKUP_CHECK_INTERVAL_MS } = {}) {
   if (!backupsEnabled()) {
     console.warn('[backup] BACKUP_ENABLED=false: automated backups are OFF.');
     return null;

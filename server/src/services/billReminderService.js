@@ -1,3 +1,4 @@
+import { softDeleteResource } from './resourceRecoveryService.js';
 import mongoose from 'mongoose';
 import Decimal from 'decimal.js';
 import Account from '../models/Account.js';
@@ -178,8 +179,7 @@ export async function updateReminder(userId, id, body, { ip, today = appToday() 
 
 export async function deleteReminder(userId, id, { ip } = {}) {
   const reminder = await findOwned(userId, id);
-  const result = await Reminder.deleteOne({ _id: reminder._id, user_id: userId });
-  if (result.deletedCount !== 1) throw new ApiError(404, NOT_FOUND);
+  await softDeleteResource(reminder);
 
   // A paid bill's expense stays: it is real money that left an account.
   await recordAudit({

@@ -1,3 +1,4 @@
+import FinancialOperation from '../models/FinancialOperation.js';
 import RecurringOccurrence from '../models/RecurringOccurrence.js';
 import RecurringRule from '../models/RecurringRule.js';
 import Notification from '../models/Notification.js';
@@ -125,6 +126,7 @@ export async function processRule(ruleId, cutoff, { now = new Date() } = {}) {
     const rule = await RecurringRule.findOne({ _id: ruleId, status: 'active' });
     if (!rule || rule.next_due_date.getTime() > cutoff.getTime()) break;
 
+    if (await FinancialOperation.exists({ user_id: rule.user_id })) break;
     const scheduled = rule.next_due_date;
 
     // The rule has run out (end date or count reached): close it.
@@ -216,6 +218,7 @@ export async function completeStaleClaims({ now = new Date() } = {}) {
       await RecurringOccurrence.deleteOne({ _id: ledger._id, status: 'claimed' });
       continue;
     }
+    if (await FinancialOperation.exists({ user_id: rule.user_id })) continue;
     try {
       await finishOccurrence(rule, ledger);
       completed += 1;

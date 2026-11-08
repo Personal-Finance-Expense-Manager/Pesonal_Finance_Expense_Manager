@@ -197,7 +197,7 @@ test('REQ-81: signing in is required to list or upload', async () => {
   assert.equal((await upload(anonymous, transactionId, JPG, 'x.jpg', 'image/jpeg')).status, 401);
 });
 
-test('ST_54: deleting removes the record and the stored file, and the old URL stops working', async () => {
+test('ST_54: deleting hides the record, retains its encrypted file for recovery, and revokes the old URL', async () => {
   const { api, transactionId, user } = await setup();
   const { body } = await upload(api, transactionId, JPG, 'gone.jpg', 'image/jpeg');
   const { object_key: key } = await Attachment.findById(body.data.id).lean();
@@ -205,8 +205,11 @@ test('ST_54: deleting removes the record and the stored file, and the old URL st
   const res = await api.delete(`/api/attachments/${body.data.id}`);
   assert.equal(res.status, 200);
   assert.equal(await Attachment.countDocuments({ _id: body.data.id }), 0);
-  assert.equal((await storedFiles()).includes(key), false);
+  assert.equal((await storedFiles()).includes(key), true);
+  assert.equal(await Attachment.countDocuments({ _id: body.data.id, is_deleted: true }), 1);
   assert.equal((await fetchUrl(body.data.view_url)).status, 403);
+  assert.equal((await api.post(`/api/recovery/attachments/${body.data.id}/restore`)).status, 200);
+  assert.equal((await fetchUrl(body.data.view_url)).status, 200);
 
   const audit = await AuditLog.find({ user_id: user._id, entity_type: 'attachment' }).lean();
   assert.deepEqual(audit.map((a) => a.action).sort(), ['delete', 'upload']);

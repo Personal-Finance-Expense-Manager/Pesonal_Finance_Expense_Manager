@@ -1,3 +1,4 @@
+import { assertIsolatedTestDatabase } from './helpers/testIsolation.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import 'dotenv/config';
@@ -49,6 +50,7 @@ before(async () => {
     );
   }
 
+  assertIsolatedTestDatabase(uri, process.env.PFEM_TEST_RUN_ID);
   await mongoose.connect(uri);
 
   // Email addresses are encrypted at rest (SEC-3), so leftovers from an earlier

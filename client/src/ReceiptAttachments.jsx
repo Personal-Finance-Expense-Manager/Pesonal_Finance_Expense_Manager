@@ -143,7 +143,7 @@ export default function ReceiptAttachments({ transactionId, onChange }) {
   }
 
   async function remove(item) {
-    if (!window.confirm(`Delete "${item.file_name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${item.file_name}"? It can be restored from Recovery within 30 days.`)) return;
     setMessage('');
     try {
       await call(`attachments/${item.id}`, { method: 'DELETE' });

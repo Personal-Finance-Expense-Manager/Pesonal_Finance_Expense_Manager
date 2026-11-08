@@ -1,3 +1,5 @@
+import { financialAvailability } from './services/financialOperationService.js';
+import recoveryRoutes from './routes/recovery.js';
 import express from 'express';
 import cors from 'cors';
 import adminRoutes from './routes/admin.js';
@@ -105,6 +107,8 @@ app.use('/api', (req, res, next) => {
   return requireUser(req, res, next);
 });
 
+app.use('/api', financialAvailability);
+
 // API routes.
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
@@ -113,6 +117,7 @@ app.use('/api/auth', authRoutes);
 // because the lock state belongs to the session.
 app.use('/api/app-lock', appLockRoutes);
 
+app.use('/api/recovery', requireUser, recoveryRoutes);
 app.use('/api/accounts', requireUser, accountRoutes);
 app.use('/api/budgets', requireUser, budgetRoutes);
 

@@ -1,17 +1,16 @@
 /**
  * Shared set-up for the API integration tests (run with `npm run test:integration`).
  *
- * These tests drive the real Express app against a real MongoDB, so they need
- * TEST_MONGO_URI. The helper DROPS that database, so it refuses to run unless
- * the database name contains "test" - it must never be pointed at a dev or
- * production database.
+ * These tests require a unique database allocated and checked by the isolated runner.
+ * Suites may reset that allocated database only. Never point them at an existing database.
  *
- *   TEST_MONGO_URI=mongodb://127.0.0.1:27017/pfem_test npm run test:integration
+ *   npm run test:integration:isolated
  */
 process.env.NODE_ENV = 'test';
 process.env.DEV_AUTH_HEADER = 'true'; // interim X-User-Id auth (middleware/currentUser.js)
 
 import mongoose from 'mongoose';
+import { assertIsolatedTestDatabase } from './testIsolation.js';
 
 const uri = process.env.TEST_MONGO_URI;
 
@@ -22,7 +21,7 @@ if (!uri) {
   );
 }
 
-const dbName = new URL(uri).pathname.replace(/^\//, '');
+const dbName = assertIsolatedTestDatabase(uri, process.env.PFEM_TEST_RUN_ID);
 
 if (!/test/i.test(dbName)) {
   throw new Error(

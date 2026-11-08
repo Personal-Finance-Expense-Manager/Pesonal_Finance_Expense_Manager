@@ -1,3 +1,4 @@
+import { softDeleteResource } from '../services/resourceRecoveryService.js';
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import Category from '../models/Category.js';
@@ -305,7 +306,7 @@ router.get('/:id/usage', async (req, res, next) => {
         ? `"${category.name}" is a built-in category and cannot be deleted.`
         : transactionCount === 0
           ? 'No transactions use this category.'
-          : `${transactionCount} transaction${transactionCount === 1 ? '' : 's'} will be moved to "${UNCATEGORIZED_NAME}".`,
+          : `${transactionCount} transaction${transactionCount === 1 ? '' : 's'} will retain their original category association.`,
     });
   } catch (error) {
     next(error);
@@ -336,51 +337,23 @@ router.delete('/:id', async (req, res, next) => {
     if (req.query.confirm !== 'true') {
       return res.status(409).json({
         message:
-          transactionCount === 0
-            ? `Delete "${category.name}"? No transactions use it.`
-            : `Delete "${category.name}"? ${transactionCount} transaction${transactionCount === 1 ? '' : 's'} will be moved to "${UNCATEGORIZED_NAME}".`,
+          `Move "${category.name}" to Recovery for 30 days? Transactions and child category associations will be retained.`,
         transaction_count: transactionCount,
         child_count: children.length,
         confirmation_required: true,
       });
     }
 
-    let movedTransactions = 0;
-
-    if (transactionCount > 0) {
-      const fallback = await ensureUncategorized(req.user.id, category.type);
-
-      const result = await Transaction.updateMany(
-        { user_id: req.user.id, category_id: category._id },
-        { $set: { category_id: fallback._id } }
-      );
-
-      movedTransactions = result.modifiedCount ?? transactionCount;
-    }
-
-    // Children are promoted to top level rather than silently deleted, so no
-    // category disappears without the user asking for it.
-    let promotedChildren = 0;
-
-    if (children.length > 0) {
-      const result = await Category.updateMany(
-        { user_id: req.user.id, parent_category_id: category._id },
-        { $set: { parent_category_id: null } }
-      );
-
-      promotedChildren = result.modifiedCount ?? children.length;
-    }
-
-    await category.deleteOne();
+    // Keep historical associations intact so recovery is a single-document change.
+    const movedTransactions = 0;
+    const promotedChildren = 0;
+    await softDeleteResource(category);
 
     res.json({
       deleted: category.name,
       moved_transactions: movedTransactions,
       promoted_children: promotedChildren,
-      message:
-        movedTransactions > 0
-          ? `Deleted "${category.name}". ${movedTransactions} transaction${movedTransactions === 1 ? '' : 's'} moved to "${UNCATEGORIZED_NAME}".`
-          : `Deleted "${category.name}".`,
+      message: `Moved "${category.name}" to Recovery for 30 days. Historical associations are retained.`,
     });
   } catch (error) {
     next(error);
