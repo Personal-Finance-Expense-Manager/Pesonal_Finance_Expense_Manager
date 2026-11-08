@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Categories and subcategories page - US-12 (#30), SRS 5.4, REQ-35 to REQ-40.
  *
  * Open it at http://localhost:5173/#/categories
  *
- * Until sign-in (US-04) is wired into the feature pages there is no logged-in
- * user here, so the page asks for a demo user id (from `npm run seed:dev` in
- * server/) and sends it in an X-User-Id header, exactly as the accounts and
- * budgets pages do. When that is replaced, drop the demo box and authHeaders.
+ * Requests carry the signed-in user's session token (Authorization: Bearer).
+ * A signed-out visitor is asked to sign in.
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const emptyForm = {
   name: '',
@@ -231,14 +229,6 @@ function CategoryRow({ category, depth, editingId, editForm, editErrors, busy,
 // ---------------------------------------------------------------------------
 
 export default function CategoriesPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
 
   const [categories, setCategories] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -258,7 +248,7 @@ export default function CategoriesPage() {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...authHeaders(userId),
+        ...authHeaders(),
         ...(options.headers || {}),
       },
     });
@@ -271,10 +261,10 @@ export default function CategoriesPage() {
       throw err;
     }
     return data;
-  }, [userId]);
+  }, []);
 
   const loadCategories = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
     try {
       const data = await api('');
       setCategories(data.categories);
@@ -283,7 +273,7 @@ export default function CategoriesPage() {
       setCategories([]);
       setError(err.message);
     }
-  }, [api, userId]);
+  }, [api]);
 
   useEffect(() => {
     loadCategories();
@@ -294,16 +284,6 @@ export default function CategoriesPage() {
     setError('');
   }
 
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage can be unavailable (private window); the value still works for this visit.
-    }
-    setUserId(value);
-  }
 
   // ---- defaults (REQ-35) --------------------------------------------------
 
@@ -435,22 +415,7 @@ export default function CategoriesPage() {
           </nav>
         </header>
 
-        {/* Demo user box - removed once sign-in is wired into feature pages */}
-        {/* Hidden once signed in: the session identifies the user (US-25). */}
-        {!isSignedIn() && (
-          <form onSubmit={saveUserId} style={cardStyle}>
-            <label style={labelStyle}>
-              Demo user id
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Run npm run seed:dev in server/ and paste the id"
-              />
-            </label>
-            <button type="submit" style={button('ghost', busy)} disabled={busy}>Use this user</button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="categories" />}
 
         {message && (
           <p style={{ ...cardStyle, borderColor: colors.green, color: colors.greenSoft, padding: 14 }}>{message}</p>
@@ -459,11 +424,8 @@ export default function CategoriesPage() {
           <p style={{ ...cardStyle, borderColor: '#7f1d1d', color: colors.red, padding: 14 }}>{error}</p>
         )}
 
-        {!userId && !isSignedIn() && (
-          <p style={{ color: colors.muted }}>Enter a demo user id above to load categories.</p>
-        )}
 
-        {(userId || isSignedIn()) && (
+        {isSignedIn() && (
           <>
             {/* Create (REQ-36, REQ-37, REQ-38) */}
             <form onSubmit={handleCreate} style={cardStyle}>

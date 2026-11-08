@@ -16,6 +16,8 @@ const loaders = {
   recurring: () => import('./RecurringPage.jsx'),
   bills: () => import('./BillRemindersPage.jsx'),
   goals: () => import('./SavingsGoalsPage.jsx'),
+  admin: () => import('./AdminPage.jsx'),
+  privacy: () => import('./PrivacyPage.jsx'),
 };
 
 const AccountsPage = lazy(loaders.accounts);
@@ -31,6 +33,8 @@ const SecurityPage = lazy(loaders.security);
 const RecurringPage = lazy(loaders.recurring);
 const BillRemindersPage = lazy(loaders.bills);
 const SavingsGoalsPage = lazy(loaders.goals);
+const AdminPage = lazy(loaders.admin);
+const PrivacyPage = lazy(loaders.privacy);
 
 function prefetchPages() {
   const run = () => Object.values(loaders).forEach((load) => load().catch(() => {}));
@@ -86,6 +90,8 @@ function Page({ hash }) {
   if (hash === '#/reports') return <ReportsPage />;
   if (hash === '#/security') return <SecurityPage />;
   if (hash === '#/goals') return <SavingsGoalsPage />;
+  if (hash === '#/admin') return <AdminPage />;
+  if (hash === '#/privacy') return <PrivacyPage />;
 
   return <App />;
 }

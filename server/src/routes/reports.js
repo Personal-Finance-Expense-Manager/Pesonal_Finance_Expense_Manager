@@ -5,6 +5,7 @@ import { chartsForPeriod } from '../services/chartsService.js';
 import { reportForPeriod, reportToCsvRows } from '../services/reportService.js';
 import { reportToPdf } from '../services/reportPdfService.js';
 import { toCsv } from '../utils/csv.js';
+import { auditFromRequest } from '../services/auditService.js';
 import { monthlyPeriod, parseDateOnly, today } from '../utils/period.js';
 
 /**
@@ -209,6 +210,9 @@ router.get('/period.csv', async (req, res, next) => {
 
     const report = await reportForPeriod(req.user.id, parsed);
 
+    // REQ-96: exports are audited (the range, never the figures).
+    await auditFromRequest(req, { category: 'export', action: 'export.report_csv', entityType: 'export' });
+
     sendDownload(res, {
       body: toCsv(reportToCsvRows(report)),
       type: 'text/csv; charset=utf-8',
@@ -226,6 +230,8 @@ router.get('/period.pdf', async (req, res, next) => {
 
     const report = await reportForPeriod(req.user.id, parsed);
     const pdf = await reportToPdf(report, { userName: req.user.name || '' });
+
+    await auditFromRequest(req, { category: 'export', action: 'export.report_pdf', entityType: 'export' });
 
     sendDownload(res, {
       body: pdf,

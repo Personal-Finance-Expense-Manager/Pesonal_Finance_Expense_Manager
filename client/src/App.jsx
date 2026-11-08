@@ -2,8 +2,12 @@
 import { useEffect, useState } from 'react';
 import './App.css';
 import { saveSession, clearSession, getToken, getUser, isSignedIn } from './auth.js';
+import { takeNotice } from './sessionGuard.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+// SEC-8: why the person was signed out (inactivity, suspension...), read once.
+const signedOutNotice = takeNotice();
 
 const passwordChecks = [
   { label: 'At least 8 characters', test: (p) => p.length >= 8 },
@@ -20,6 +24,7 @@ const initialForm = {
   mobileNumber: '',
   termsAccepted: false,
   privacyPolicyAccepted: false,
+  dataProcessingConsent: false,
 };
 
 function getInitialScreen() {
@@ -58,9 +63,10 @@ export default function App() {
   const [code, setCode] = useState('');
   const [token, setToken] = useState(() => getToken() || null);
   const [loggedInUser, setLoggedInUser] = useState(() => getUser());
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(signedOutNotice);
   const [busy, setBusy] = useState(false);
   const [health, setHealth] = useState('Checking API connection...');
   const [unmetRules, setUnmetRules] = useState([]);
@@ -106,6 +112,25 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // The role only decides whether the Administration link is shown. Every
+  // admin route checks the role again on the server.
+  useEffect(() => {
+    const stored = getToken();
+    if (!stored) return undefined;
+    let cancelled = false;
+
+    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${stored}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (!cancelled) setIsAdmin(body?.data?.role === 'admin');
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedInUser]);
 
   function clearFeedback() {
     setError('');
@@ -159,6 +184,12 @@ export default function App() {
 
     if (!form.termsAccepted || !form.privacyPolicyAccepted) {
       setError('Accept both policies to continue.');
+      return;
+    }
+
+    // SEC-13 / DPDP Act: consent to processing is its own explicit choice.
+    if (!form.dataProcessingConsent) {
+      setError('Consent to the processing of your personal data is required to create an account.');
       return;
     }
 
@@ -494,6 +525,22 @@ export default function App() {
                   I accept the Privacy Policy.
                 </label>
 
+                <label style={{ display: 'flex', gap: 10, marginBottom: 17 }}>
+                  <input
+                    type="checkbox"
+                    name="dataProcessingConsent"
+                    checked={form.dataProcessingConsent}
+                    onChange={updateField}
+                    required
+                  />
+                  <span>
+                    I consent to PFEM processing my personal data (name, email and the
+                    financial records I enter) to provide this service. I can see, correct,
+                    export or erase it, and withdraw this consent, at any time from
+                    Privacy &amp; data.
+                  </span>
+                </label>
+
                 <button style={buttonStyle} disabled={busy}>
                   {busy ? 'Creating account...' : 'Create account'}
                 </button>
@@ -722,6 +769,8 @@ export default function App() {
                   ['Bill reminders', '#/bills'],
                   ['Import & export', '#/data'],
                   ['App lock', '#/security'],
+                  ['Privacy & data', '#/privacy'],
+                  ...(isAdmin ? [['Administration', '#/admin']] : []),
                 ].map(([label, href]) => (
                   <a
                     key={href}

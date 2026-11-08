@@ -22,9 +22,14 @@ after(async () => {
   await fs.rm(uploadRoot, { recursive: true, force: true });
 });
 
-const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 1)]);
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(2048, 2)]);
-const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(2048, 3)]);
+const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 1), Buffer.from([0xff, 0xd9])]);
+const PNG = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from([0, 0, 0, 13]), Buffer.from('IHDR'), Buffer.alloc(17, 0),
+  Buffer.alloc(2048, 2),
+  Buffer.from([0, 0, 0, 0]), Buffer.from('IEND'), Buffer.from([0xae, 0x42, 0x60, 0x82]),
+]);
+const PDF = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(2048, 3), Buffer.from('\n%%EOF\n')]);
 const EXE = Buffer.concat([Buffer.from([0x4d, 0x5a]), Buffer.alloc(512)]);
 
 async function setup() {

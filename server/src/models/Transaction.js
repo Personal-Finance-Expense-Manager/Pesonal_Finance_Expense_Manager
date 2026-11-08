@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import fieldEncryption from './plugins/fieldEncryption.js';
 import {
   hasAtMostTwoDecimalPlaces,
   isPositiveMoney,
@@ -210,6 +211,8 @@ transactionSchema.pre('validate', function validateDeletionDate() {
     this.deleted_at = null;
   }
 });
+
+transactionSchema.plugin(fieldEncryption, { fields: ['note'] });
 
 export default mongoose.models.Transaction ||
   mongoose.model('Transaction', transactionSchema);

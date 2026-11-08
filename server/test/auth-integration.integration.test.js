@@ -51,7 +51,10 @@ before(async () => {
 
   await mongoose.connect(uri);
 
-  await User.deleteMany({ email: /^authint/ });
+  // Email addresses are encrypted at rest (SEC-3), so leftovers from an earlier
+  // run are found by their decrypted address rather than by a database regex.
+  const leftovers = (await User.find({}).select('email').lean()).filter((u) => /^authint/.test(u.email || ''));
+  if (leftovers.length) await User.deleteMany({ _id: { $in: leftovers.map((u) => u._id) } });
 
   user = await User.create({
     name: 'Auth Integration',

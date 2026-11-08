@@ -5,7 +5,7 @@ import { authHeaders } from './auth.js';
  * Shared by the transaction form and the ReceiptAttachments panel.
  */
 
-const API = 'http://localhost:5000/api';
+const API = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
 export const MAX_ATTACHMENTS = 3;
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
@@ -36,10 +36,10 @@ export function checkAttachment(file) {
   return '';
 }
 
-export async function attachmentRequest(path, userId, options = {}) {
+export async function attachmentRequest(path, options = {}) {
   const response = await fetch(`${API}/${path}`, {
     ...options,
-    headers: { ...authHeaders(userId), ...options.headers },
+    headers: { ...authHeaders(), ...options.headers },
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.message || 'Request failed.');
@@ -47,11 +47,11 @@ export async function attachmentRequest(path, userId, options = {}) {
 }
 
 /** Upload one file to a transaction. The body is the file itself. */
-export function uploadAttachment(transactionId, file, userId) {
+export function uploadAttachment(transactionId, file) {
   const ext = file.name.split('.').pop().toLowerCase();
   const type = file.type || Object.keys(TYPES).find((t) => TYPES[t].includes(ext));
 
-  return attachmentRequest(`transactions/${transactionId}/attachments`, userId, {
+  return attachmentRequest(`transactions/${transactionId}/attachments`, {
     method: 'POST',
     headers: { 'Content-Type': type, 'X-File-Name': encodeURIComponent(file.name) },
     body: file,

@@ -1,0 +1,117 @@
+# Reverse proxy for PFEM - US-28 (#67), SEC-1 (transport security) and SEC-6 (CSP).
+#
+# This is an EXAMPLE. Replace the host names and certificate paths, then test with
+#   nginx -t
+# and check the result with an external TLS scanner (for example SSL Labs).
+#
+# What it does
+#   - redirects all plain HTTP to HTTPS
+#   - accepts only TLS 1.2 and 1.3, with modern ciphers
+#   - sends HSTS with a one-year max-age (and includeSubDomains)
+#   - serves the built client (client/dist) with a Content-Security-Policy
+#   - forwards /api to the Node server and tells it the request was HTTPS
+#
+# The API then needs, in server/.env:
+#   NODE_ENV=production
+#   TRUST_PROXY=1                      one proxy (this one) sits in front of it
+#   CLIENT_ORIGIN=https://app.example.com
+# The API listens on 127.0.0.1 only; it must never be reachable except through here.
+#
+# Certificates: any CA works; Let's Encrypt (certbot) is the usual free choice.
+
+# --- plain HTTP: redirect everything --------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name app.example.com;
+
+    # Let's Encrypt HTTP-01 challenge (remove if you use another method).
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+
+    location / { return 301 https://$host$request_uri; }
+}
+
+# --- HTTPS -----------------------------------------------------------------------
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name app.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/app.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.example.com/privkey.pem;
+
+    # SEC-1: TLS 1.2 or higher only.
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:TLS:10m;
+    ssl_session_tickets off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    # SEC-1: HSTS, minimum one year. "always" so it is sent on error pages too.
+    # Add "preload" only after reading https://hstspreload.org - it is hard to undo.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Headers for the web client (the API sets its own, stricter ones).
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+
+    # SEC-6: Content-Security-Policy for the client. The Vite build uses no inline
+    # scripts. 'unsafe-inline' for style is needed because the client styles
+    # elements with the React `style` prop. connect-src must name the API origin.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.example.com; connect-src 'self' https://api.example.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+
+    root /var/www/pfem/client/dist;
+    index index.html;
+
+    # Single-page app: unknown paths fall back to index.html.
+    location / { try_files $uri /index.html; }
+
+    # Hashed build assets can be cached for a long time.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+}
+
+# --- API on its own host name (matches CLIENT_ORIGIN / connect-src above) ---------
+# If you prefer one host, proxy "location /api/" inside the server block above and
+# change connect-src to 'self'.
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name api.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:TLS:10m;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Receipts are limited to 5 MB by the API; allow a little headroom for headers.
+    client_max_body_size 6m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+
+        # The API trusts exactly ONE proxy hop (TRUST_PROXY=1). Overwrite - never
+        # append to - what the client sent, so a forged X-Forwarded-For cannot
+        # reach the API's rate limiter or audit trail.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host              $host;
+
+        proxy_read_timeout 60s;
+    }
+}

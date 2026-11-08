@@ -12,8 +12,8 @@
  * transactions, transfers, budgets, alerts, categories) so you can start a
  * test or a demo recording from a clean slate. The user id stays the same.
  *
- * Prints the user's id. Paste it into the "Demo user id" box on the
- * Accounts or Budgets page while sign-in (US-04) is not merged yet.
+ * Prints the demo account's email and password. Sign in with them on the web
+ * client like any other user; every page authenticates with the session token.
  * Refuses to run with NODE_ENV=production.
  */
 import 'dotenv/config';
@@ -27,6 +27,7 @@ import Transfer from '../src/models/Transfer.js';
 import Budget from '../src/models/Budget.js';
 import Notification from '../src/models/Notification.js';
 import { createDefaultCategories } from '../src/services/categoryService.js';
+import { CONSENT_PURPOSES, PRIVACY_POLICY_VERSION } from '../src/config/privacy.js';
 
 const DEMO_EMAIL = 'demo@pfem.local';
 
@@ -57,6 +58,16 @@ try {
       email_verified: true,
       terms_accepted_at: new Date(),
       privacy_policy_accepted_at: new Date(),
+      // US-28 SEC-13: recorded like a real registration, so the demo account
+      // behaves like a genuine one on the Privacy page.
+      consent: {
+        personal_data_processing: true,
+        policy_version: PRIVACY_POLICY_VERSION,
+        purposes: CONSENT_PURPOSES,
+        given_at: new Date(),
+        given_ip: null,
+        withdrawn_at: null,
+      },
     });
     console.log('Created demo user.');
   } else {
@@ -83,9 +94,8 @@ try {
   console.log('');
   console.log(`  email:    ${DEMO_EMAIL}`);
   console.log('  password: Demo@12345');
-  console.log(`  user id:  ${user._id.toString()}`);
   console.log('');
-  console.log('Copy the user id into the Accounts or Budgets page.');
+  console.log('Sign in with these on the web client (http://localhost:5173).');
 } catch (error) {
   console.error(`Could not create the demo user: ${error.message}`);
   process.exitCode = 1;

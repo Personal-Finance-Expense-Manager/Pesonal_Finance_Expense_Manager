@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import authenticate from './authenticate.js';
+import { recordAudit } from '../services/auditService.js';
 
 /**
  * Work out which user is making the request - US-25 (#61), SRS 5.10: REQ-93.
@@ -18,9 +19,10 @@ import authenticate from './authenticate.js';
  *
  * Step 3 can never apply in production (NODE_ENV=production) and is off unless
  * explicitly switched on, because trusting a client-supplied user id would let
- * anyone read anyone's data. It exists only so the feature pages built during
- * Sprint 1 keep working while they are migrated to the token, and it is
- * removed once every client page sends Authorization.
+ * anyone read anyone's data. The web client no longer uses it (US-28: every page
+ * sends the session token); it remains only so the server's own integration
+ * suites and local command-line scripts can act as a user without signing in.
+ * Production start-up refuses to run with DEV_AUTH_HEADER=true (config/security.js).
  */
 export async function requireUser(req, res, next) {
   if (req.user?.id) return next();
@@ -32,6 +34,8 @@ export async function requireUser(req, res, next) {
     return authenticate(req, res, next);
   }
 
+  // SEC-4/SEC-12: development-only, and only when switched on explicitly. The
+  // server also refuses to start in production with this flag set.
   const devHeaderAllowed =
     process.env.NODE_ENV !== 'production' &&
     process.env.DEV_AUTH_HEADER === 'true';
@@ -76,6 +80,17 @@ export function requireAdmin(req, res, next) {
   const role = req.user?.role || 'user';
 
   if (role !== 'admin') {
+    // REQ-96: permission failures are audited.
+    void recordAudit({
+      userId: req.user?._id ?? req.user?.id ?? null,
+      actorRole: role,
+      category: 'authz',
+      outcome: 'denied',
+      action: 'admin.access_denied',
+      ip: req.ip,
+      metadata: { path: (req.originalUrl || '').split('?')[0].slice(0, 120), method: req.method },
+    });
+
     return res.status(403).json({
       message: 'This area is restricted to administrators.',
     });

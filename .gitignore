@@ -97,3 +97,8 @@ desktop.ini
 *.7z
 *.tar
 *.tar.gz
+
+# Encrypted database backups and local upload store (US-26, US-23): never committed
+server/backups/
+server/backups
+*.pfembk

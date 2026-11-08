@@ -471,20 +471,19 @@ function snapshotTransfer(doc) {
   };
 }
 
-/** Audit only what actually changed: the old and new value of each changed field. */
+/**
+ * Audit what changed, not the values (SEC-11, REQ-96): the trail records which
+ * fields were edited, but never the amounts or notes themselves.
+ */
 async function auditChange(userId, entityType, entityId, action, before, after, ip) {
-  const oldValue = {};
-  const newValue = {};
+  const changed = Object.keys(after).filter(
+    (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+  );
 
-  for (const key of Object.keys(after)) {
-    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
-      oldValue[key] = before[key];
-      newValue[key] = after[key];
-    }
-  }
+  if (!changed.length) return;
 
-  if (!Object.keys(newValue).length) return;
-
+  const oldValue = { changed_fields: changed };
+  const newValue = { changed_fields: changed };
   await recordAudit({ userId, entityType, entityId, action, oldValue, newValue, ip });
 }
 

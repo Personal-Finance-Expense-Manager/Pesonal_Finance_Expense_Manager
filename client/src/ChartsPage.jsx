@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Spending charts - US-21 (#50), SRS 5.8: REQ-70, REQ-71, REQ-72.
@@ -13,7 +14,6 @@ import { authHeaders, isSignedIn } from './auth.js';
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const colors = {
   page: '#0b1120',
@@ -190,14 +190,6 @@ function TrendChart({ trend }) {
 }
 
 export default function ChartsPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
 
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(todayIso);
@@ -208,12 +200,12 @@ export default function ChartsPage() {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
     setLoading(true);
     try {
       const response = await fetch(
         `${API_URL}/api/reports/charts?from=${from}&to=${to}&months=${months}`,
-        { headers: { ...authHeaders(userId) } }
+        { headers: { ...authHeaders() } }
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not load the charts.');
@@ -225,22 +217,12 @@ export default function ChartsPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, from, to, months]);
+  }, [from, to, months]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage can be unavailable (private window); the value still works for this visit.
-    }
-    setUserId(value);
-  }
 
   const hasSpending = data && data.by_category.length > 0;
 
@@ -262,31 +244,9 @@ export default function ChartsPage() {
           </nav>
         </header>
 
-        {/* Hidden once signed in: the session identifies the user (US-25). */}
-        {!isSignedIn() && (
-          <form onSubmit={saveUserId} style={cardStyle}>
-            <label style={labelStyle}>
-              Demo user id
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Run npm run seed:dev in server/ and paste the id"
-              />
-            </label>
-            <button
-              type="submit"
-              style={{
-                marginTop: 12, padding: '9px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600,
-                border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', cursor: 'pointer',
-              }}
-            >
-              Use this user
-            </button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="charts" />}
 
-        {(userId || isSignedIn()) && (
+        {isSignedIn() && (
           <div style={{ ...cardStyle, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
             <label style={labelStyle}>
               From
@@ -310,11 +270,8 @@ export default function ChartsPage() {
           <p style={{ ...cardStyle, borderColor: '#7f1d1d', color: colors.red, padding: 14 }}>{error}</p>
         )}
 
-        {!userId && !isSignedIn() && (
-          <p style={{ color: colors.muted }}>Enter a demo user id above to see your charts.</p>
-        )}
 
-        {(userId || isSignedIn()) && loading && !data && (
+        {isSignedIn() && loading && !data && (
           <p style={{ color: colors.muted }}>Loading charts...</p>
         )}
 

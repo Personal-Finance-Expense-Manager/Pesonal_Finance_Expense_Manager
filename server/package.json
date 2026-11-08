@@ -8,12 +8,15 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/dashboard.test.js test/transaction-validation.test.js test/totals.test.js test/charts.test.js test/report.test.js test/split-validation.test.js test/attachment-validation.test.js test/import-export.test.js test/request-timing.test.js test/app-lock.test.js test/webauthn.test.js test/app-lock-client.test.js test/recurrence.test.js test/recurring-validation.test.js test/bill-reminder.test.js",
+    "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/dashboard.test.js test/transaction-validation.test.js test/totals.test.js test/charts.test.js test/report.test.js test/split-validation.test.js test/attachment-validation.test.js test/import-export.test.js test/request-timing.test.js test/app-lock.test.js test/webauthn.test.js test/app-lock-client.test.js test/recurrence.test.js test/recurring-validation.test.js test/bill-reminder.test.js test/security-unit.test.js test/secret-scan.test.js",
     "test:integration": "node --test --test-concurrency=1 test/*.integration.test.js",
     "seed:dev": "node scripts/seed-dev-user.js",
     "dev:spend": "node scripts/dev-spend.js",
     "bench:report": "node scripts/bench-report.js",
-    "bench": "node scripts/benchmark.js"
+    "bench": "node scripts/benchmark.js",
+    "migrate:encryption": "node scripts/migrate-encryption.js",
+    "admin:promote": "node scripts/promote-admin.js",
+    "backup": "node scripts/backup-cli.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

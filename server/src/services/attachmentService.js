@@ -157,7 +157,6 @@ export async function addAttachment(userId, transactionId, file, { ip } = {}) {
     action: 'upload',
     newValue: {
       transaction_id: transactionId,
-      file_name: attachment.file_name,
       mime_type: attachment.mime_type,
       size_bytes: attachment.size_bytes,
     },
@@ -185,7 +184,6 @@ export async function removeAttachment(userId, attachmentId, { ip } = {}) {
     action: 'delete',
     oldValue: {
       transaction_id: attachment.transaction_id.toString(),
-      file_name: attachment.file_name,
     },
     ip,
   });

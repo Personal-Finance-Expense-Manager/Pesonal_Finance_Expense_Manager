@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, isSignedIn } from './auth.js';
+import SignInRequired from './SignInRequired.jsx';
 
 /**
  * Category-wise and tag-wise totals - US-13 (#31), SRS 5.4, REQ-42.
@@ -11,7 +12,6 @@ import { authHeaders, isSignedIn } from './auth.js';
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const DEV_USER_KEY = 'pfem_dev_user_id';
 
 const colors = {
   page: '#0b1120',
@@ -103,14 +103,6 @@ function Row({ item, barColour }) {
 }
 
 export default function TotalsPage() {
-  const [userId, setUserId] = useState(() => {
-    try {
-      return localStorage.getItem(DEV_USER_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [userIdDraft, setUserIdDraft] = useState(userId);
 
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(todayIso);
@@ -121,12 +113,12 @@ export default function TotalsPage() {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!userId && !isSignedIn()) return;
+    if (!isSignedIn()) return;
     setLoading(true);
     try {
       const response = await fetch(
         `${API_URL}/api/reports/totals?from=${from}&to=${to}&type=${type}`,
-        { headers: { ...authHeaders(userId) } }
+        { headers: { ...authHeaders() } }
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'Could not load totals.');
@@ -138,22 +130,12 @@ export default function TotalsPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, from, to, type]);
+  }, [from, to, type]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function saveUserId(event) {
-    event.preventDefault();
-    const value = userIdDraft.trim();
-    try {
-      localStorage.setItem(DEV_USER_KEY, value);
-    } catch {
-      // Storage can be unavailable (private window); the value still works for this visit.
-    }
-    setUserId(value);
-  }
 
   return (
     <div style={{ minHeight: '100vh', background: colors.page, color: colors.text, padding: '32px 18px' }}>
@@ -171,31 +153,9 @@ export default function TotalsPage() {
           </nav>
         </header>
 
-        {/* Hidden once signed in: the session identifies the user (US-25). */}
-        {!isSignedIn() && (
-          <form onSubmit={saveUserId} style={cardStyle}>
-            <label style={labelStyle}>
-              Demo user id
-              <input
-                style={inputStyle}
-                value={userIdDraft}
-                onChange={(e) => setUserIdDraft(e.target.value)}
-                placeholder="Run npm run seed:dev in server/ and paste the id"
-              />
-            </label>
-            <button
-              type="submit"
-              style={{
-                marginTop: 12, padding: '9px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600,
-                border: `1px solid ${colors.inputBorder}`, background: 'transparent', color: '#e2e8f0', cursor: 'pointer',
-              }}
-            >
-              Use this user
-            </button>
-          </form>
-        )}
+        {!isSignedIn() && <SignInRequired what="totals" />}
 
-        {(userId || isSignedIn()) && (
+        {isSignedIn() && (
           <div style={{ ...cardStyle, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
             <label style={labelStyle}>
               From
@@ -219,9 +179,8 @@ export default function TotalsPage() {
           <p style={{ ...cardStyle, borderColor: '#7f1d1d', color: colors.red, padding: 14 }}>{error}</p>
         )}
 
-        {!userId && !isSignedIn() && <p style={{ color: colors.muted }}>Enter a demo user id above to see your totals.</p>}
 
-        {(userId || isSignedIn()) && loading && !data && <p style={{ color: colors.muted }}>Loading totals...</p>}
+        {isSignedIn() && loading && !data && <p style={{ color: colors.muted }}>Loading totals...</p>}
 
         {data && (
           <>

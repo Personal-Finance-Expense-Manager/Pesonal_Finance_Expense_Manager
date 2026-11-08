@@ -1,4 +1,5 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
+import fieldEncryption from './plugins/fieldEncryption.js';
 
 const attachmentSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -11,5 +12,7 @@ const attachmentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 attachmentSchema.index({ user_id: 1, transaction_id: 1 });
+
+attachmentSchema.plugin(fieldEncryption, { fields: ['file_name'] });
 
 export default mongoose.models.Attachment || mongoose.model('Attachment', attachmentSchema);

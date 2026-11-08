@@ -5,6 +5,7 @@ import {
   FLUSH_INTERVAL_MS,
 } from './offlineQueue.js';
 import ReceiptAttachments from './ReceiptAttachments.jsx';
+import SignInRequired from './SignInRequired.jsx';
 import {
   ATTACHMENT_ACCEPT,
   ATTACHMENT_RULES,
@@ -13,7 +14,7 @@ import {
   uploadAttachment,
 } from './receipts.js';
 
-const API = 'http://localhost:5000/api';
+const API = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 const PAGE_SIZE = 25;
 
 const emptyFilters = {
@@ -57,12 +58,12 @@ function optionId(item) {
   return String(item?.id ?? item?._id ?? '');
 }
 
-async function apiRequest(path, userId, options = {}) {
+async function apiRequest(path, options = {}) {
   const response = await fetch(`${API}/${path}`, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...authHeaders(userId),
+      ...authHeaders(),
       ...options.headers,
     },
   });
@@ -105,10 +106,6 @@ const buttonStyle = {
 };
 
 export default function TransactionsPage() {
-  const [userId, setUserId] = useState(
-    () => localStorage.getItem('pfem_dev_user_id') || '',
-  );
-
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -156,25 +153,22 @@ export default function TransactionsPage() {
   const [listMessage, setListMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Load the account and category options for the current development user.
+  // Load the account and category options for the signed-in user.
   useEffect(() => {
-    const id = userId.trim();
-
-    if (!id && !isSignedIn()) return;
+    if (!isSignedIn()) return;
 
     let cancelled = false;
-    localStorage.setItem('pfem_dev_user_id', id);
 
     async function loadOptions() {
       try {
         const [accountResult, categoryResult] = await Promise.all([
-          apiRequest('accounts', id),
-          apiRequest('categories', id),
+          apiRequest('accounts'),
+          apiRequest('categories'),
         ]);
 
         // Previously used tags (REQ-41). A failure here must not stop the page
         // loading, so it is handled separately and ignored on error.
-        apiRequest('tags', id)
+        apiRequest('tags')
           .then((tagResult) => {
             if (!cancelled) setKnownTags(listFrom(tagResult, 'tags'));
           })
@@ -225,13 +219,11 @@ export default function TransactionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [userId, refresh]);
+  }, [refresh]);
 
   // Load the requested page of filtered transactions.
   useEffect(() => {
-    const id = userId.trim();
-
-    if (!id && !isSignedIn()) return;
+    if (!isSignedIn()) return;
 
     const controller = new AbortController();
 
@@ -250,7 +242,6 @@ export default function TransactionsPage() {
       try {
         const result = await apiRequest(
           `transactions?${params.toString()}`,
-          id,
           { signal: controller.signal },
         );
 
@@ -280,24 +271,7 @@ export default function TransactionsPage() {
     loadTransactions();
 
     return () => controller.abort();
-  }, [userId, filters, page, refresh]);
-
-  function handleUserIdChange(event) {
-    const value = event.target.value;
-
-    setUserId(value);
-    setPage(1);
-
-    if (!value.trim()) {
-      setAccounts([]);
-      setCategories([]);
-      setTransactions([]);
-      setPagination({ ...emptyPagination });
-      setTotalAmount('0.00');
-      setListMessage('');
-      setMessage('');
-    }
-  }
+  }, [filters, page, refresh]);
 
   /**
    * Append a suggested tag to the comma-separated list (REQ-41), unless it is
@@ -366,7 +340,7 @@ export default function TransactionsPage() {
     async (payload) => {
       const response = await fetch(`${API}/transactions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders(userId) },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(payload),
       });
 
@@ -379,7 +353,7 @@ export default function TransactionsPage() {
         data: body.data,
       };
     },
-    [userId]
+    []
   );
 
   /** Drain the queue and report what happened - REQ-34. */
@@ -447,10 +421,9 @@ export default function TransactionsPage() {
     event.preventDefault();
     setMessage('');
 
-    // A signed-in user is identified by the session token (US-25, REQ-93); the
-    // development id is only needed when there is no session.
-    if (!userId.trim() && !isSignedIn()) {
-      setMessage('Enter your development user ID.');
+    // The caller is identified by the session token (US-25, REQ-93).
+    if (!isSignedIn()) {
+      setMessage('Sign in to add transactions.');
       return;
     }
 
@@ -538,7 +511,7 @@ export default function TransactionsPage() {
     setBusy(true);
 
     try {
-      const created = await apiRequest('transactions', userId, {
+      const created = await apiRequest('transactions', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -552,7 +525,7 @@ export default function TransactionsPage() {
 
         for (const file of receiptFiles) {
           try {
-            await uploadAttachment(newId, file, userId);
+            await uploadAttachment(newId, file);
           } catch (error) {
             failed.push(`${file.name}: ${error.message}`);
           }
@@ -574,7 +547,7 @@ export default function TransactionsPage() {
     }
   }
 
-  const hasUserId = Boolean(userId.trim()) || isSignedIn();
+  const signedIn = isSignedIn();
 
   return (
     <main
@@ -674,19 +647,7 @@ export default function TransactionsPage() {
         </a>
       </nav>
 
-      {/* Hidden once signed in: the session identifies the user (US-25). */}
-      {!isSignedIn() && (
-        <label style={labelStyle}>
-          Development user ID
-          <input
-            style={fieldStyle}
-            value={userId}
-            onChange={handleUserIdChange}
-            placeholder="Enter development user ID"
-            required
-          />
-        </label>
-      )}
+      {!isSignedIn() && <SignInRequired what="transactions" />}
 
       <h2>Browse transactions</h2>
 
@@ -843,8 +804,8 @@ export default function TransactionsPage() {
       </button>
 
       <p style={{ color: '#cbd5e1' }} role="status">
-        {!hasUserId
-          ? 'Enter your development user ID to browse transactions.'
+        {!signedIn
+          ? 'Sign in to browse transactions.'
           : listMessage ||
             `Matching transactions: ${pagination.totalItems}`}
       </p>
@@ -959,7 +920,6 @@ export default function TransactionsPage() {
                   <td colSpan={8}>
                     <ReceiptAttachments
                       transactionId={item.id}
-                      userId={userId}
                       onChange={() => setRefresh((value) => value + 1)}
                     />
                   </td>
@@ -968,7 +928,7 @@ export default function TransactionsPage() {
               </Fragment>
             ))}
 
-            {hasUserId &&
+            {signedIn &&
               !transactions.length &&
               !listMessage && (
                 <tr>
@@ -998,7 +958,7 @@ export default function TransactionsPage() {
         <button
           type="button"
           style={buttonStyle}
-          disabled={!hasUserId || page <= 1}
+          disabled={!signedIn || page <= 1}
           onClick={() =>
             setPage((value) => Math.max(1, value - 1))
           }
@@ -1014,7 +974,7 @@ export default function TransactionsPage() {
           type="button"
           style={buttonStyle}
           disabled={
-            !hasUserId ||
+            !signedIn ||
             page >= pagination.totalPages ||
             pagination.totalPages === 0
           }

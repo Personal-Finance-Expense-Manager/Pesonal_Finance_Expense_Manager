@@ -8,7 +8,6 @@ import { authHeaders } from './auth.js';
  */
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-export const DEV_USER_KEY = 'pfem_dev_user_id';
 
 export const colors = {
   page: '#0b1120', card: '#172033', cardBorder: '#283449', input: '#101827',
@@ -60,12 +59,12 @@ export function niceDate(iso) {
   });
 }
 
-/** A small JSON client for the signed-in user (or the dev header user). */
-export function makeApi(userId) {
+/** A small JSON client for the signed-in user (Bearer token only). */
+export function makeApi() {
   return async function api(path, options = {}) {
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...authHeaders(userId) },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

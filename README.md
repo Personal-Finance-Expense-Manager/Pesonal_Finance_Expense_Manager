@@ -156,6 +156,18 @@ Edit `server/.env` and set `MONGO_URI` to your database. Never commit this file 
 it is ignored by git, and SEC-12 of the SRS requires secrets to come from the
 environment.
 
+**New keys are required** (US-28 / US-26). Generate each with
+`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`:
+
+| Variable | Needed for |
+|---|---|
+| `ENCRYPTION_KEY` | the server will not start without it (encryption at rest) |
+| `BACKUP_ENCRYPTION_KEY` | the daily backup (without it the API starts but runs no backups and says so) |
+
+Everything else has a safe default for local work; see `server/.env.example`. If you
+already have data from before this change, run `npm run migrate:encryption` once
+(`-- --dry-run` first) - see [docs/SECURITY.md](docs/SECURITY.md).
+
 The API listens on <http://localhost:5000>. Check it is alive:
 
 ```bash
@@ -189,6 +201,11 @@ its home page.
 |---|---|---|
 | `server/` | `npm run dev` | start the API with auto-reload |
 | `server/` | `npm start` | start the API once |
+| `server/` | `npm test` / `npm run test:integration` | unit tests / integration tests (need MongoDB; see [docs/TESTING-US26-US28.md](docs/TESTING-US26-US28.md)) |
+| `server/` | `npm run seed:dev` | create a demo account (`demo@pfem.local` / `Demo@12345`) with default categories; sign in with it on the web client |
+| `server/` | `npm run migrate:encryption` | encrypt records and files written before encryption existed (`-- --dry-run` first) |
+| `server/` | `npm run admin:promote -- <email>` | make a user an administrator (`--demote` removes it) |
+| `server/` | `npm run backup -- <create\|list\|verify\|restore\|cleanup>` | backup tools that work without the API running |
 | `server/` | `npm run bench` | performance benchmark against a throwaway database (see `PERFORMANCE.md`) |
 | `client/` | `npm run dev` | start the Vite dev server |
 | `client/` | `npm run build` | production build into `client/dist` |
@@ -305,6 +322,44 @@ three times with exponential backoff), `skipped_not_configured` or
 | Email | Works when `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `EMAIL_FROM` are set. |
 | Push | **Needs a provider, which is not configured here.** The channel, the subscription store (`POST /api/notifications/push-subscriptions`) and the delivery log are in place. To switch it on, register an object with `async send(subscription, { title, body, data })` using `setPushProvider()` from `server/src/services/notifications/channels.js` at start-up (for example a Web Push sender configured with VAPID keys). Until then push is recorded as `skipped_not_configured`. |
 
+## Administration, audit trail, backups and security
+
+**US-26 (#62)** adds an administrator area (`/#/admin`): user counts and statuses,
+suspend and restore accounts, an audit-trail viewer, and encrypted backups. An
+administrator can manage accounts but can never see transaction amounts, balances,
+notes, attachments or reports. There is deliberately no API to become an
+administrator; use `npm run admin:promote -- you@example.com` on the server.
+
+- Every sign-in, failure, refusal, export, bulk deletion and administrator action is
+  recorded with the actor, time and source IP, never with passwords, tokens, notes or
+  amounts. Records are append-only and removed automatically after 12 months.
+- A backup of the whole database is taken every 24 hours, encrypted (AES-256-GCM),
+  kept 7 days, and can be verified and restored from the admin screen or the CLI.
+
+**US-28 (#67)** hardens the application against the OWASP Top 10: HTTPS and HSTS,
+bcrypt >= 12, AES-256-GCM encryption of personal data and receipts, JWT on every
+route, ownership checks, input and injection guards, CSP and security headers,
+rate limiting, a 30-minute inactivity timeout enforced by the server, upload
+screening, secret management and a privacy workflow (consent, access, export,
+correction, erasure) at `/#/privacy`.
+
+Read before deploying:
+
+| Document | Contents |
+|---|---|
+| [docs/SECURITY.md](docs/SECURITY.md) | each control, configuration, **what is not covered**, deployment checklist |
+| [docs/BACKUP_AND_RESTORE.md](docs/BACKUP_AND_RESTORE.md) | what a backup holds, consistency, restore steps and limits |
+| [docs/API-US26-US28.md](docs/API-US26-US28.md) | admin and privacy endpoints |
+| [docs/TESTING-US26-US28.md](docs/TESTING-US26-US28.md) | how to run the tests, what they cover, results |
+| [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md) | requirement-by-requirement checklist and deviations |
+| [deploy/nginx.conf.example](deploy/nginx.conf.example) | TLS 1.2+, HSTS, client CSP, proxy settings |
+
+Important limits (details in `docs/SECURITY.md`): transaction **amounts are not
+encrypted by the application** (they feed database aggregations; use encrypted
+storage), rate-limit counters are per process, and HTTPS/TLS depends on your proxy.
+
+---
+
 ## Repository Layout
 
 ```text
@@ -316,6 +371,8 @@ three times with exponential backoff), `skipped_not_configured` or
 │       ├── index.js     entry point
 │       ├── config/      database connection
 │       └── routes/      API routers
+├── docs/            security, backup, API and testing documentation (US-26, US-28)
+├── deploy/          example reverse-proxy configuration (TLS, HSTS, CSP)
 ├── .github/         CI workflows, PR template, CODEOWNERS
 ├── BACKLOG.md       product backlog and sprint plan
 └── *.docx / *.pdf   SRS, SADS, Test Plan and Test Cases

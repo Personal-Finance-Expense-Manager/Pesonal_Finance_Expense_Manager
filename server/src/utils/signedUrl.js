@@ -12,6 +12,8 @@ import crypto from 'node:crypto';
  */
 
 export const SIGNED_URL_TTL_SECONDS = 5 * 60;
+// SEC-10: no link may stay valid for longer than 15 minutes, whatever is asked for.
+export const SIGNED_URL_MAX_SECONDS = 15 * 60;
 
 function secret() {
   const value = process.env.ATTACHMENT_URL_SECRET || process.env.JWT_SECRET;
@@ -32,7 +34,7 @@ function signature(attachmentId, userId, expires) {
 
 /** Sign access to one attachment for one user. `expires` is Unix seconds. */
 export function signAttachment(attachmentId, userId, now = Date.now(), ttl = SIGNED_URL_TTL_SECONDS) {
-  const expires = Math.floor(now / 1000) + ttl;
+  const expires = Math.floor(now / 1000) + Math.min(Math.max(Number(ttl) || 0, 1), SIGNED_URL_MAX_SECONDS);
   return {
     expires,
     signature: signature(String(attachmentId), String(userId), expires),
@@ -56,6 +58,9 @@ export function verifyAttachment(attachmentId, userId, expires, sig, now = Date.
   }
 
   if (Math.floor(now / 1000) > exp) return 'expired';
+
+  // Defence in depth: a link claiming more than 15 minutes of life is not one we issued.
+  if (exp - Math.floor(now / 1000) > SIGNED_URL_MAX_SECONDS) return 'invalid';
 
   return 'ok';
 }

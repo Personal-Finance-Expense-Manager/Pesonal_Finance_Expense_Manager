@@ -1,5 +1,6 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { hasAtMostTwoDecimalPlaces } from '../utils/money.js';
+import fieldEncryption from './plugins/fieldEncryption.js';
 
 // US-05: one enrolled device biometric (a WebAuthn credential).
 const appLockCredentialSchema = new mongoose.Schema(
@@ -26,9 +27,15 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,
       lowercase: true,
       trim: true,
+    },
+
+    // SEC-3: the email is stored encrypted. This keyed hash (HMAC-SHA256) is what
+    // sign-in looks up and what keeps addresses unique. See plugins/fieldEncryption.js.
+    email_hash: {
+      type: String,
+      select: false,
     },
 
     mobile_number: {
@@ -107,6 +114,32 @@ const userSchema = new mongoose.Schema(
       type: Date,
     },
 
+    // US-28 (SEC-13, DPDP Act): explicit consent to process personal data,
+    // recorded with enough metadata to show what was agreed, when and to which notice.
+    consent: {
+      type: new mongoose.Schema(
+        {
+          personal_data_processing: { type: Boolean, default: false },
+          policy_version: { type: String, default: null },
+          purposes: { type: [String], default: [] },
+          given_at: { type: Date, default: null },
+          given_ip: { type: String, default: null },
+          withdrawn_at: { type: Date, default: null },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+
+    // US-26 (REQ-94): who suspended the account, when and why (never shown to the user's data).
+    suspended_at: { type: Date, default: null },
+    suspended_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    suspension_reason: { type: String, default: null, maxlength: 300 },
+    last_sign_in_at: { type: Date, default: null },
+
+    // US-28 (SEC-13): set when the account was erased on the user's request.
+    erased_at: { type: Date, default: null },
+
     // Financial preferences
     base_currency: {
       type: String,
@@ -179,6 +212,14 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+userSchema.index({ email_hash: 1 }, { unique: true, partialFilterExpression: { email_hash: { $type: 'string' } } });
+userSchema.index({ status: 1, createdAt: -1 });
+
+userSchema.plugin(fieldEncryption, {
+  fields: ['name', 'email', 'mobile_number'],
+  blindIndex: { email: 'email_hash' },
+});
 
 export default mongoose.models.User ||
   mongoose.model('User', userSchema);

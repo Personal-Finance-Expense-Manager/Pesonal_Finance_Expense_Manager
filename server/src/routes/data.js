@@ -35,6 +35,8 @@ function sendDownload(res, { body, type, fileName }) {
 function auditExport(req, action, detail) {
   return recordAudit({
     userId: req.user.id,
+    actorRole: req.user.role ?? 'user',
+    category: 'export',
     entityType: 'export',
     entityId: new mongoose.Types.ObjectId(String(req.user.id)),
     action,

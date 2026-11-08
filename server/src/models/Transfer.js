@@ -1,5 +1,6 @@
-﻿
+
 import mongoose from 'mongoose';
+import fieldEncryption from './plugins/fieldEncryption.js';
 import { isPositiveMoney } from '../utils/money.js';
 
 const transferSchema = new mongoose.Schema({
@@ -96,6 +97,8 @@ transferSchema.pre('validate', function validateAccounts() {
     );
   }
 });
+
+transferSchema.plugin(fieldEncryption, { fields: ['note'] });
 
 export default mongoose.models.Transfer ||
   mongoose.model('Transfer', transferSchema);

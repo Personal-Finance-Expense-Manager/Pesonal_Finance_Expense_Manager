@@ -42,10 +42,16 @@ let baseUrl;
 export async function startApi() {
   await mongoose.connect(uri);
   await mongoose.connection.dropDatabase();
+  // dropDatabase() also removes indexes Mongoose may still have been building,
+  // so the unique/partial indexes some tests rely on are created again here.
+  for (const name of mongoose.modelNames()) await mongoose.model(name).createIndexes();
   server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 }
+
+/** The base URL of the running test server, for clients that need it (helpers/auth.js). */
+export const apiUrl = () => baseUrl;
 
 export async function stopApi() {
   await new Promise((resolve) => server.close(resolve));

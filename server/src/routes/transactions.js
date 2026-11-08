@@ -217,6 +217,7 @@ router.get('/', async (req, res, next) => {
     }
 
     // Case-insensitive note-text search.
+    let noteSearch = '';
     if (search !== undefined) {
       if (typeof search !== 'string' || search.length > 200) {
         return res.status(400).json({
@@ -224,12 +225,10 @@ router.get('/', async (req, res, next) => {
         });
       }
 
-      if (search.trim()) {
-        query.note = {
-          $regex: escapeRegex(search.trim()),
-          $options: 'i',
-        };
-      }
+      // Notes are encrypted at rest (US-28 SEC-3), so the database cannot
+      // search them. The text is matched after decryption, below, once every
+      // other filter has narrowed the candidates.
+      noteSearch = search.trim().toLowerCase();
     }
 
     // Tag filter.
@@ -268,6 +267,16 @@ router.get('/', async (req, res, next) => {
           $in: links.map((link) => link.transaction_id),
         };
       }
+    }
+
+    if (noteSearch) {
+      const candidates = await Transaction.find(query).select('_id note').lean();
+
+      query._id = {
+        $in: candidates
+          .filter((item) => (item.note || '').toLowerCase().includes(noteSearch))
+          .map((item) => item._id),
+      };
     }
 
     // Fetch the current page, filtered count and filtered total.

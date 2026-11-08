@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import fieldEncryption from './plugins/fieldEncryption.js';
 import { isPositiveMoney } from '../utils/money.js';
 
 export const RECURRING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'];
@@ -121,6 +122,8 @@ recurringRuleSchema.index({
 });
 
 recurringRuleSchema.index({ status: 1, next_due_date: 1 });
+
+recurringRuleSchema.plugin(fieldEncryption, { fields: ['note'] });
 
 export default mongoose.models.RecurringRule ||
   mongoose.model('RecurringRule', recurringRuleSchema);

@@ -8,7 +8,9 @@ import {
   presentAttachment,
   removeAttachment,
 } from '../services/attachmentService.js';
-import { objectPath, isValidObjectKey } from '../services/storageService.js';
+import { readObject, isValidObjectKey } from '../services/storageService.js';
+import User from '../models/User.js';
+import { recordAudit } from '../services/auditService.js';
 import { verifyAttachment } from '../utils/signedUrl.js';
 import { sendApiError } from '../utils/apiError.js';
 import {
@@ -102,18 +104,30 @@ export const attachmentFileRoutes = express.Router();
 attachmentFileRoutes.get('/:id/content', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const refused = () =>
-      res.status(403).json({
+    const refused = (reason, userId = null) => {
+      // SEC-11: a refused file request is an authorization failure worth recording.
+      void recordAudit({
+        userId,
+        category: 'authz',
+        outcome: 'denied',
+        action: 'attachment.access_denied',
+        entityType: 'attachment',
+        entityId: mongoose.isValidObjectId(id) ? id : null,
+        ip: req.ip,
+        metadata: { reason },
+      });
+      return res.status(403).json({
         message: 'This link has expired or is not valid. Open the attachment again from the transaction.',
       });
+    };
 
-    if (!mongoose.isValidObjectId(id)) return refused();
+    if (!mongoose.isValidObjectId(id)) return refused('invalid_id');
 
     const attachment = await Attachment.findById(id).lean();
 
     // A deleted attachment, or a URL for someone else's, gets the same answer
     // as a forged one: nothing about the file is revealed.
-    if (!attachment || !isValidObjectKey(attachment.object_key)) return refused();
+    if (!attachment || !isValidObjectKey(attachment.object_key)) return refused('not_found');
 
     const verdict = verifyAttachment(
       attachment._id.toString(),
@@ -122,7 +136,19 @@ attachmentFileRoutes.get('/:id/content', async (req, res, next) => {
       req.query.signature,
     );
 
-    if (verdict !== 'ok') return refused();
+    if (verdict !== 'ok') return refused(verdict, attachment.user_id);
+
+    // A signed link stops working the moment its owner is suspended or erased.
+    const owner = await User.findById(attachment.user_id).select('status').lean();
+    if (!owner || owner.status !== 'active') return refused('owner_inactive', attachment.user_id);
+
+    let bytes;
+    try {
+      bytes = await readObject(attachment.object_key);
+    } catch (error) {
+      if (error.code === 'ENOENT') return res.status(404).json({ message: 'Attachment not found.' });
+      throw error;
+    }
 
     res.attachment(attachment.file_name);
 
@@ -132,19 +158,15 @@ attachmentFileRoutes.get('/:id/content', async (req, res, next) => {
 
     res.set({
       'Content-Type': attachment.mime_type,
+      'Content-Length': String(bytes.length),
       'Cache-Control': 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
+      // Whatever the file contains, the browser may not run it or let it reach the app.
+      'Content-Security-Policy': "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+      'Cross-Origin-Resource-Policy': 'cross-origin',
     });
 
-    return res.sendFile(objectPath(attachment.object_key), (error) => {
-      if (!error) return;
-      if (res.headersSent) return;
-      if (error.code === 'ENOENT') {
-        res.removeHeader('Content-Disposition');
-        return res.status(404).json({ message: 'Attachment not found.' });
-      }
-      return next(error);
-    });
+    return res.end(bytes);
   } catch (error) {
     return next(error);
   }
