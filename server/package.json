@@ -11,6 +11,8 @@
     "test": "node --test test/account-validation.test.js test/budget.test.js test/balance.test.js test/category-validation.test.js test/dashboard.test.js test/transaction-validation.test.js test/totals.test.js test/charts.test.js test/report.test.js test/split-validation.test.js test/attachment-validation.test.js test/import-export.test.js test/request-timing.test.js test/app-lock.test.js test/webauthn.test.js test/app-lock-client.test.js test/recurrence.test.js test/recurring-validation.test.js test/bill-reminder.test.js test/security-unit.test.js test/secret-scan.test.js",
     "test:integration": "node --test --test-concurrency=1 test/*.integration.test.js",
     "test:system": "node --test --test-concurrency=1 test/sprint3-system.integration.test.js",
+    "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage test/*.test.js",
+    "report:tests": "node scripts/generate-reports.js",
     "seed:dev": "node scripts/seed-dev-user.js",
     "dev:spend": "node scripts/dev-spend.js",
     "bench:report": "node scripts/bench-report.js",
