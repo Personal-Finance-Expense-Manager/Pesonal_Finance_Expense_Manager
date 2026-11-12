@@ -8,6 +8,13 @@
  *
  *   TEST_MONGO_URI=mongodb://127.0.0.1:27017/pfem_test npm run test:integration
  */
+// Every test file runs in its own process, so each one needs the environment
+// loaded for itself. Without this only JWT_SECRET-free suites pass: signing a
+// token throws "secretOrPrivateKey must have a value", and the attachment
+// signer refuses to start. It is imported before anything that reads the
+// environment at module scope.
+import 'dotenv/config';
+
 process.env.NODE_ENV = 'test';
 process.env.DEV_AUTH_HEADER = 'true'; // interim X-User-Id auth (middleware/currentUser.js)
 
