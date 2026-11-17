@@ -58,7 +58,7 @@ test('REQ-45 days left counts today and the last day', () => {
   assert.equal(daysLeft(october, d('2026-09-15')), 31);
 });
 
-test('REQ-44 overlap: same days overlap, back-to-back periods do not', () => {
+test('BR-5 / REQ-44 overlap: same days overlap, back-to-back periods do not', () => {
   const october = monthlyPeriod(TODAY, 1);
   const november = monthlyPeriod(d('2026-11-05'), 1);
   const lateOctWeek = weeklyPeriod(d('2026-10-28'));
@@ -164,7 +164,7 @@ test('REQ-45 ST_15 budgeted, spent, remaining, percent and days left', () => {
   });
 });
 
-test('REQ-45 status turns to warning at 80% and over at 100%', () => {
+test('BR-6 / REQ-45 status turns to warning at 80% and over at 100%', () => {
   const p = monthlyPeriod(TODAY, 1);
   assert.equal(summarise('6000', '4799.99', p, TODAY).status, 'ok');
   assert.equal(summarise('6000', '4800', p, TODAY).status, 'warning');

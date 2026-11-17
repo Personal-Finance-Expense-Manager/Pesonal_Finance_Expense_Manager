@@ -25,7 +25,7 @@ async function createGoal(user, savedAmount = '500.00') {
   });
 }
 
-test('US-19: withdrawing savings reduces the goal and increases destination account balance', async () => {
+test('BR-9 / US-19: withdrawing savings reduces the goal and increases destination account balance', async () => {
   const user = await createUser();
   const bank = await createAccount(user, { opening_balance: '1000.00' });
   const goal = await createGoal(user);
@@ -60,7 +60,7 @@ test('US-19: withdrawing savings reduces the goal and increases destination acco
   assert.equal(await netWorthOf(user), beforeNetWorth);
 });
 
-test('US-19: withdrawal cannot exceed the saved amount', async () => {
+test('BR-9 / US-19: withdrawal cannot exceed the saved amount', async () => {
   const user = await createUser();
   const bank = await createAccount(user);
   const goal = await createGoal(user, '100.00');
