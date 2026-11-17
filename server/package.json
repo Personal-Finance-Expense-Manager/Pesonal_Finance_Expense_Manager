@@ -13,6 +13,7 @@
     "test:system": "node --test --test-concurrency=1 test/sprint3-system.integration.test.js",
     "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage test/*.test.js",
     "report:tests": "node scripts/generate-reports.js",
+    "report:trace": "python scripts/generate-traceability.py",
     "seed:dev": "node scripts/seed-dev-user.js",
     "dev:spend": "node scripts/dev-spend.js",
     "bench:report": "node scripts/bench-report.js",

@@ -35,7 +35,7 @@ async function addAttachment(user, transactionId) {
 // REQ-29 - soft delete
 // ---------------------------------------------------------------------------
 
-test('UT_20: deleting an expense restores the balance and budget at once and moves it to the recycle bin', async () => {
+test('SAF-3 / UT_20: deleting an expense restores the balance and budget at once and moves it to the recycle bin', async () => {
   const { user, bank, api } = await setup();
   const expense = await record(user, { type: 'expense', amount: '500', account_id: bank.id });
   const spent = await overallBudget(user);

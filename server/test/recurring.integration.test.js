@@ -249,7 +249,7 @@ test('REQ-55 a leap-year February uses the 29th; a yearly 29 Feb rule uses 28 Fe
 // REQ-60: catch-up, duplicates, restarts
 // ---------------------------------------------------------------------------
 
-test('REQ-60 IT_25: missed days are generated on the next run, each with its original date, once', async () => {
+test('BR-8 / REQ-60 IT_25: missed days are generated on the next run, each with its original date, once', async () => {
   const ctx = await setup({ amount: '10', frequency: 'daily' });
   const rule = await createRule(ctx);
 

@@ -147,7 +147,7 @@ test('ST3-02 accounts hold balances that follow their transactions, and net wort
 
 // ===========================================================================
 // ST3-03  Money in motion: record, correct, remove and restore
-// Covers US-08, US-09 - REQ-22..REQ-30, BR-2
+// Covers US-08, US-09 - REQ-22..REQ-30, BR-2, BR-11, SAF-3, PER-6
 // ===========================================================================
 test('ST3-03 a transaction can be recorded, corrected, deleted and restored, and balances follow every step', async () => {
   const { user, api } = await signedIn('st303');
@@ -179,6 +179,8 @@ test('ST3-03 a transaction can be recorded, corrected, deleted and restored, and
 
   // Correcting an amount recomputes the balance (REQ-28).
   assert.equal((await api.patch(`/api/transactions/${expense.id}`, { amount: '400.00' })).status, 200);
+  // PER-6: the balance agrees with the data immediately, well inside the
+  // five seconds the requirement allows.
   balances = await balancesOf(user);
   assert.equal(money(balances[a.id]), '7100.00', 'the balance follows the correction');
 
@@ -236,7 +238,7 @@ test('ST3-04 transactions can be found by date, account, category, type, tag, am
 
 // ===========================================================================
 // ST3-05  A real bill: split across categories, and kept out of budgets
-// Covers US-11 - REQ-32, REQ-33, REQ-50
+// Covers US-11 - REQ-32, REQ-33, REQ-50, BR-1
 // ===========================================================================
 test('ST3-05 a split bill is attributed to each category, and an excluded item leaves budgets but not reports', async () => {
   const { user, api } = await signedIn('st305');
@@ -278,6 +280,17 @@ test('ST3-05 a split bill is attributed to each category, and an excluded item l
   assert.equal(byName['ST305 Shopping'], '1200.00', 'Shopping is only its own share');
   assert.equal(money(totals.grand_total), '3900.00', 'the bill is never counted twice');
 
+  // BR-1: a transaction belongs to exactly one category unless it is split,
+  // and a split one carries no parent category - so there is never a second,
+  // disagreeing answer to which category the money went to.
+  const saved = (await api.get('/api/transactions?limit=50')).body.data;
+  const splitRow = saved.find((row) => row.splits && row.splits.length > 0);
+  assert.ok(splitRow, 'the split transaction is listed');
+  assert.equal(splitRow.category_id, null, 'a split bill has no single parent category');
+  for (const row of saved.filter((r) => !r.splits || r.splits.length === 0)) {
+    assert.ok('category_id' in row, 'an unsplit transaction carries exactly one category field');
+  }
+
   // The budget counts only its own share, and ignores the reimbursable item.
   await api.post('/api/budgets', { category_id: food.id, amount: '10000', period_type: 'monthly' });
   const budgets = (await api.get('/api/budgets')).body.budgets;
@@ -287,7 +300,7 @@ test('ST3-05 a split bill is attributed to each category, and an excluded item l
 
 // ===========================================================================
 // ST3-06  Organising spending: categories and tags
-// Covers US-12, US-13 - REQ-35..REQ-42
+// Covers US-12, US-13 - REQ-35..REQ-42, BR-7
 // ===========================================================================
 test('ST3-06 categories are seeded and protected, and spending can be totalled by category and by tag', async () => {
   // REQ-35 is a promise made by registration, so this case registers for
@@ -328,7 +341,7 @@ test('ST3-06 categories are seeded and protected, and spending can be totalled b
     name: 'ST306 Strings', type: 'expense', parent_category_id: sub.id,
   })).status, 400, 'subcategories stop at one level');
 
-  // Default categories cannot be renamed or removed (REQ-39).
+  // Default categories cannot be renamed or removed (REQ-39, BR-7).
   const builtIn = seeded.find((c) => c.name === 'Food');
   assert.equal((await api.patch(`/api/categories/${builtIn.id}`, { name: 'Nope' })).status, 403,
     'a built-in category cannot be renamed');
@@ -454,7 +467,7 @@ test('ST3-08 a recurring rule generates its transactions and can be paused, and 
 
 // ===========================================================================
 // ST3-09  Saving up: goals
-// Covers US-18, US-19 - REQ-61..REQ-68
+// Covers US-18, US-19 - REQ-61..REQ-68, BR-9
 // ===========================================================================
 test('ST3-09 a savings goal tracks progress, accepts contributions and gives money back on withdrawal', async () => {
   const { user, api } = await signedIn('st309');

@@ -88,7 +88,7 @@ test('REQ-20 a transfer between own accounts does not change net worth', () => {
   assert.equal(before.net_worth, after.net_worth);
 });
 
-test('REQ-20 accounts in another currency are listed, not silently added', () => {
+test('BR-13 / REQ-20 accounts in another currency are listed, not silently added', () => {
   const usd = account('bank', '0', { currency: 'USD', name: 'US account' });
   const result = netWorth([
     { account: account('bank', '0'), balance: computeBalance(account('bank', '1000')) },

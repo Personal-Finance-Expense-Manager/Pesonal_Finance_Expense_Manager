@@ -60,7 +60,7 @@ test('rejects invalid amounts with the required message', () => {
   }
 });
 
-test('rejects dates more than one day in the future', () => {
+test('BR-11 rejects dates more than one day in the future', () => {
   const { errors } = validateTransactionInput({
     ...validInput,
     transaction_date: '2099-01-01',
